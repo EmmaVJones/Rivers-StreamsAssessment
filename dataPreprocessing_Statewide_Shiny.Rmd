@@ -1,0 +1,247 @@
+---
+title: "Preparing Data for Regions"
+output: 
+  html_document:
+    theme: yeti
+runtime: shiny
+---
+
+Run in R 3.5.2
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(sf))
+suppressPackageStartupMessages(library(readxl))
+suppressPackageStartupMessages(library(shiny))
+suppressPackageStartupMessages(library(mapview))
+suppressPackageStartupMessages(library(leaflet))
+suppressPackageStartupMessages(library(miniUI))
+suppressPackageStartupMessages(library(DT))
+
+source('snapFunctions.R') # snapping functions
+source('snapOrganizationFunctions.R') # functions to do stuff with snapping functions
+
+# Some presets for the document to be adjusted each cycle #
+previousCycleNumber <- 2018
+currentCycleNumber <- 2020
+```
+
+This interactive document walks users through the requisite data preprocessing steps to prepare data for the 2020 IR Rivers and Streams Assessment and 2020 IR Lakes Assessment decision support applications. All initial steps are tested on 2016 and 2018 IR data and thus need to be rerun for 2020 data when those datasets become available.
+
+This document demonstrates the necessary steps to get any regional office up to speed with prerequisite data organization/processing steps to run the 2020 IR. 
+
+## Input data
+
+#### Conventionals
+Bring in Roger's conventionals dataset. Make it a csv immediately to speed up rendering in app. This is the final data pull from Roger for the `r previousCycleNumber` IR. As of today, the `r currentCycleNumber` final IR pull is not available. **Subsitute `r currentCycleNumber` data in when available.**
+
+
+```{r conventionals2018, echo=F}
+#conventionals <- read_excel('workingDatasets/CONVENTIONALS_20171010.xlsx',sheet = 'CONVENTIONALS')
+#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%y %H:%M")
+#write.csv(conventionals, 'workingDatasets/CONVENTIONALS_20171010.csv', row.names=F)
+
+conventionals <- suppressWarnings(suppressMessages(read_csv('workingDatasets/CONVENTIONALS_20171010.csv')))
+#View(conventionals) # to look at dataset use this command
+```
+
+
+```{r conventionalsDistinct, echo=FALSE}
+conventionals_D <- distinct(conventionals, FDT_STA_ID, .keep_all = T) %>%
+  select(FDT_STA_ID:FDT_SPG_CODE, STA_LV2_CODE:STA_CBP_NAME) %>%# drop data to avoid any confusion
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng, 
+rm(conventionals) # remove full conventionals dataset to save memory
+```
+
+Before we can do any spatial subsetting work, we need to make a dataset of all UNIQUE StationID's for the regional offices to work with. Below is the table output. For this cycle, there are `r nrow(conventionals_D)` unique stations sampled.
+
+```{r conventionalsDistinctTable, echo=FALSE}
+# print table for user
+DT::renderDataTable({
+  DT::datatable(conventionals_D, escape=F, rownames = F,
+                options = list(#pageLength=2, lengthMenu = c(2, 5, 10, 20),
+                               scrollX = TRUE))})
+```
+
+
+#### Statewide Assessment Layer
+
+Because we cannot trust the Deq_Region or STA_REC_CODE columns from conventionals to give us the stations each region needs to assess, we must do a spatial subset of all unique stations in an IR window (conventionals_D) by the Statewide Assessment Layer (filtered to our specified assessment region).
+
+
+Now we are going to subset all unique stations from conventionals to a specific region. **This requires minimal user input**
+
+```{r Statewide Assessment Layer, echo=FALSE, message=FALSE, warning=FALSE, results = 'hide'}
+assessmentLayer <- st_read('GIS/AssessmentRegions_VA84_basins.shp') %>%
+  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+```
+
+```{r DEQ region selectInput, echo=FALSE}
+inputPanel(
+  selectInput("regionSelection", label = "Choose a DEQ region to analyze",
+              choices = unique(assessmentLayer$ASSESS_REG),selected=NULL),
+  actionButton("subsetRegion","Subset conventionals")
+)
+
+conventionals_D_Region <- eventReactive(input$subsetRegion, {
+  req(input$regionSelection)
+  
+  assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG %in% input$regionSelection)
+  
+  st_join(conventionals_D, assessmentLayerSelection, join = st_intersects) %>%
+  filter(!is.na(VAHU6)) %>% # only keep rows that joined
+  mutate(sameVAHU6 = ifelse(VAHU6 == Huc6_Vahu6, T, F)) %>% # double check the VAHU6 watershed matches from CEDS to actual spatial layer
+  dplyr::select(FDT_STA_ID:STA_CBP_NAME, VAHU6, sameVAHU6) %>% # just get columns we are interested in
+  rename('Basin' =  'Basin.x') %>% # rename column to original name pre join
+  dplyr::select(FDT_STA_ID:STA_CBP_NAME) # get rid of the extra VAHU6 columns
+})
+```
+
+
+```{r inlineText1,echo=F}
+# way to get around inline text reactivity issues with shiny/Rmarkdown
+textOutput("nrowSites")
+output$nrowSites <- renderText({
+  req(conventionals_D_Region())
+  paste('Below are the ',nrow(conventionals_D_Region()),' unique stations in the ',input$regionSelection,' region.', sep='')
+})
+
+```
+
+
+```{r DistinctSitesInRegionTable, echo=FALSE}
+# print table for user
+DT::renderDataTable({
+  req(conventionals_D_Region())
+  DT::datatable(conventionals_D_Region(), escape=F, rownames = F,
+                options = list(#pageLength=2, lengthMenu = c(2, 5, 10, 20),
+                               scrollX = TRUE))})
+```
+
+
+#### Last Cycle Estuary Assessment Layer
+
+First thing we want to do now is filter out any sites that fall into the estuary AUs. These stations will have to be assessed through other means. **Note: you can download the table below for reference. These are all the stations within the selected assessment region that fall into an estuary AU based on the `r previousCycleNumber` AU layers.**
+
+```{r Filter Out Estuary Statewide, echo=F, results = 'hide'}
+estuaryAUs <- st_read('GIS/draft2018IR_AUs/va_2018_aus_estuarine.shp') %>%
+   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+conventionals_D_Region_Estuary <- reactive({
+  req(conventionals_D_Region())
+    st_join(conventionals_D_Region(), estuaryAUs, join = st_intersects) %>%
+      filter(!is.na(OBJECTID))
+})
+
+conventionals_D_Region_NoEstuary <- reactive({
+  req(conventionals_D_Region())
+    st_join(conventionals_D_Region(), estuaryAUs, join = st_intersects) %>%
+      filter(!(FDT_STA_ID %in% conventionals_D_Region_Estuary()$FDT_STA_ID))
+})
+```
+
+```{r estuarySitesTable, echo=F}
+# print table for user
+DT::renderDataTable({
+  req(conventionals_D_Region_Estuary())
+  DT::datatable(conventionals_D_Region_Estuary(), escape=F, rownames = F,extensions = 'Buttons', 
+                options = list(scrollX = TRUE,
+                               buttons=list('copy',
+                                            list(extend='csv',filename=paste('EstuarySites_',Sys.Date(),sep='')),
+                                            list(extend='excel',filename=paste('EstuarySites_',Sys.Date(),sep='')))))})
+```
+
+```{r inlineText2,echo=F}
+# way to get around inline text reactivity issues with shiny/Rmarkdown
+textOutput("nrowSitesWithoutE")
+
+output$nrowSitesWithoutE <- renderText({
+  req(conventionals_D_Region())
+  paste('Removing the above sites, the unique conventionals sites have gone from ', nrow(conventionals_D_Region()),' to ',nrow(conventionals_D_Region_NoEstuary()),'. The next step is to find the lake/reservoir stations and link them to the appropriate AU and WQS for analyses in the Lake Assessment App.', sep='')
+})
+
+```
+
+
+#### Last Cycle Stations Table
+
+The next step uses the `r previousCycleNumber`IR station table as a starting point for linking the stations from the `r currentCycleNumber`IR window to the appropriate AU. This is important to do prior to doing any spatial subsetting or snapping because most of the stations from the previous cycle already have QAed assessment unit information readily available and organized. It is computationally less expensive to save any necessary spatial subsetting or snapping to lake/reservoir polygons or stream segments until all joins that can be done with table methods are first completed.
+
+The table below illustrates all the stations from `r previousCycleNumber`IR station table that match the unique conventionals sites by Station_ID/FDT_STA_ID.
+```{r previousCycleStationTable}
+## This is JUST FOR BRRO RIGHT NOW BECAUSE THERE IS NOT FINAL 2018 STATIONS TABLE
+## I NEED TO REWRITE TO GET TO SOMETHING LIKE X:\2016_Assessment\GIS_2016\MonitoringStations\ir_mon_stations_2016_FINAL.mdb
+
+stationTable <- reactive({
+  req(input$regionSelection)
+  stationTable <- read_excel('data/Emma_Stations2018IR_Draft_Dec.xlsx')
+ 
+  stationTable1 <- stationTable %>%
+  group_by(STATION_ID) %>%
+  mutate(extra= n()) %>%
+  select(STATION_ID, extra, everything())
+
+stationTable2 <- distinct(stationTable, STATION_ID, ID305B_1, ID305B_2, ID305B_3, .keep_all = T)%>%
+  group_by(STATION_ID) %>%
+  mutate(extra= n()) %>%
+  select(STATION_ID, extra, everything()) %>% # still extras so just take distinct STATION_ID 
+  distinct(STATION_ID,.keep_all = T) %>%
+  select(-extra)
+rm(stationTable1)
+
+return(stationTable2)
+  }) # keep it reactive for now until I can bring in final dataset
+
+BRRO_Sites_AU <- reactive({
+  req(stationTable(), conventionals_D_Region_NoEstuary())
+  snapAndOrganizeAU(conventionals_D_Region_NoEstuary()[1:80,], st_read('GIS/va_2016_aus_riverine_WGS84.shp') %>%
+  st_transform(crs = 102003), # convert to Albers Equal Area just for snapping
+ stationTable(), seq(10,80,by=10))
+})
+
+DT::renderDataTable({
+  DT::datatable(BRRO_Sites_AU(), escape=F, rownames = F,
+                options = list(#pageLength=2, lengthMenu = c(2, 5, 10, 20),
+                               scrollX = TRUE))})
+
+
+```
+
+```{r inlineText3}
+# way to get around inline text reactivity issues with shiny/Rmarkdown
+#textOutput("nrowSitesWithoutE")
+
+#output$nrowSitesWithoutE <- renderText({
+#  req(conventionals_D_Region())
+#  paste('Removing the above sites, the unique conventionals sites have gone from ', nrow(conventionals_D_Region()),' to #',nrow(conventionals_D_Region_NoEstuary()),'. The next step is to find the lake/reservoir stations and link them to the appropriate AU and WQS for analyses in #the Lake Assessment App.', sep='')
+#})
+```
+
+```{r stationsNeedSpatialWork}
+
+```
+
+
+#### Last Cycle Reservoir Assessment Layer
+
+By bringing in the `r previousCycleNumber` reservoir layer and finding all unique conventionals sites that fall into the polygons, we can further limit the number of stream AUs that may need hands on QA. The process completed below:
+
+1. Brings in the `r previousCycleNumber` reservoir layer.
+2. Join the reservoir attribute table to connect any sites that have AU information from last cycle to the previous AU.
+
+```{r lakesLayer}
+#lakeAUs <- st_read('GIS/draft2018IR_AUs/va_2018_aus_reservoir.shp') %>%
+#   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+#conventionals_D_Region_Estuary <- reactive({
+#  req(conventionals_D_Region())
+#    st_join(conventionals_D_Region(), estuaryAUs, join = st_intersects) %>%
+#      filter(!is.na(OBJECTID))
+#})
+```
+

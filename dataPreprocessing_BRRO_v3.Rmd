@@ -33,12 +33,15 @@ This document demonstrates the necessary steps to get (any) regional office up t
 #### Conventionals
 Bring in Roger's conventionals dataset. Make it a csv immediately to speed up rendering in app. This is the final data pull from Roger for the 2018 IR. As of today, the 2020 final IR pull is not available. **Subsitute 2020 data in when available.**
 
+We only want to assess free flowing streams in this app, so we start by filtering out anything that is not labeled STREAM or SPRING in STA_LV1_CODE codes. If a station is incorrectly labeled in CEDS, then it is up to the assessors to find and correct those sites in CEDS and rerun this step.
+
 ```{r conventionals2018}
 #conventionals <- read_excel('workingDatasets/CONVENTIONALS_20171010.xlsx',sheet = 'CONVENTIONALS')
 #conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%y %H:%M")
 #write.csv(conventionals, 'workingDatasets/CONVENTIONALS_20171010.csv', row.names=F)
 
-conventionals <- suppressWarnings(suppressMessages(read_csv('workingDatasets/CONVENTIONALS_20171010.csv')))
+conventionals <- suppressWarnings(suppressMessages(read_csv('workingDatasets/CONVENTIONALS_20171010.csv'))) %>%
+  filter(!(STA_LV1_CODE %in% c('ESTURY'))) # filter out ESTURY
 #glimpse(conventionals)
 ```
 
