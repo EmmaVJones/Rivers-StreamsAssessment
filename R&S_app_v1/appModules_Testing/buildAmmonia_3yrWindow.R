@@ -70,13 +70,16 @@ acuteNH3limit <- function(x){
 
 #dataFrame <-ammonia
 #dateTimeColumn <- 'FDT_DATE_TIME2'
-consecutive <- T #F
-lastXyears <- function(dataFrame, dateTimeColumn, nYears, consecutive){
+#nYears <- 3
+#consecutive <- T #F
+lastXyears <- function(dataFrame, dateTimeColumn, nYears, consecutive){ # not bombproof but works for nYears=3
   uniqueYears <- dplyr::select(dataFrame, dateTimeColumn) %>% 
     mutate(sampleYear = lubridate::year(get(dateTimeColumn))) %>% 
     distinct(sampleYear) %>% 
     dplyr::pull()
-  
+  #uniqueYears <- c(2011, 2012, 2013, 2014, 2015, 2018)
+  #uniqueYears <- c(2013, 2014, 2015, 2017)
+  #uniqueYears <- c(2013, 2014, 2015, 2017, 2018)
   nYearsConversion <- nYears-1
   
   if(length(uniqueYears) > nYearsConversion){
@@ -85,25 +88,33 @@ lastXyears <- function(dataFrame, dateTimeColumn, nYears, consecutive){
     years <- sort(uniqueYears)}
   
   if(consecutive == TRUE){
-    suppressWarnings(suppressMessages(
-      for(i in length(years):1){
-        z <- abs(diff(c(years[i], years[i-1])))
-        if (z != 1 | i == 0) break 
-      }))
-    consecutiveYears <- years[i:length(years)]
+    recent <- years[which(years > max(years)-nYears)]
+    return(recent)
     
-    if(length(consecutiveYears) == 1){
-      previousEntry <- years[which(years==consecutiveYears)-1]
-      if(consecutiveYears - previousEntry <= 3){return(c(previousEntry, consecutiveYears))}
-    } else {
-      return(consecutiveYears)
-    }
-  
-  
-   
-  } else { return(years)  }
+    } else {return(years)}
 }
-#lastXyears(dataFrame, dateTimeColumn, 7, consecutive = T)
+  
+  
+  
+  #if(consecutive == TRUE){
+  #  suppressWarnings(suppressMessages(
+  #    for(i in length(years):1){
+  #      z <- abs(diff(c(years[i], years[i-1])))
+  #      if (z != 1 | i == 0) break 
+  #    }))
+  #  consecutiveYears <- years[i:length(years)]
+  #  
+  #  if(length(consecutiveYears) == 1){
+  #    previousEntry <- years[which(years==consecutiveYears)-1]
+  #    if(consecutiveYears - previousEntry <= 3){return(c(previousEntry, consecutiveYears))}
+  #  } else {
+  #    return(consecutiveYears)
+  #  }
+  
+  #} else { return(years)  }
+#}
+
+#lastXyears(dataFrame, dateTimeColumn, 3, consecutive = T)
 
 
 
@@ -113,7 +124,7 @@ acuteNH3exceedance <- function(x){
     ammonia <- acuteNH3limit(x) %>%
       filter(!is.na(AMMONIA)) %>% #get rid of NA's
       mutate(sampleYear = lubridate::year(FDT_DATE_TIME2)) # add year to enable filtering by last 3 years with data
-    last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3)
+    last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3, TRUE)
     ammonia <- filter(ammonia, sampleYear %in% last3years) %>%
       select(-sampleYear) %>%
       rename(parameter = !!names(.[4]), limit = !!names(.[5])) %>% # rename columns to make functions easier to apply
