@@ -1,0 +1,154 @@
+---
+title: "How to run automated assessment"
+author: "Emma Jones"
+date: "February 11, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sf)
+library(readxl)
+library(FSA)
+library(lubridate)
+library(magrittr)
+
+# Bring in Assessment functions from app
+source('global.R')
+```
+
+This document walks users through runing the automated assessement for their region. Prior to this point, the user needs to have completed the necessary prerequisites. This dataset is a companion to the rivers and streams assessment application and is **NOT** final. The results cited in this table are identical to the app calculations and are meant for assessor review, QA, editing prior to finalizing.
+
+# Prerequisites
+The user will have to have all conventionals data, water column metals, and sediment metals organized by Roger for the window. Additionally, the EDAS data needs to be exported and available for use. Last cycle's finalized regional assessment layer (shapefile with AUs) are the spatial component needed. Lastly, the assessor must have the stations 2.0 table for the upcoming cycle completely filled out in order to run the assessment. 
+
+```{r datasources}
+# Regional AU layer from last cycle
+regionalAUs <- st_read('GIS/AU_BRRO_2016_WGS84.shp')
+
+# Roger's conventionals data pull
+conventionals <- suppressWarnings(read_csv('data/CONVENTIONALS_20171010.csv'))
+conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
+
+# Roger's metals data pull
+WCmetals <- read_excel('data/WATER_METALS_20170712.xlsx')
+Smetals <- read_excel('data/SEDIMENT_20170712.xlsx')
+
+# Bring in latest EDAS VSCI and (combined) VCPMI queries
+VSCI <- read_excel('data/Family Metrics VSCI Calculation.xlsx')%>%
+  filter(RepNum == 1 & Target_Count == 110 &
+           CollDate >= assessmentPeriod[1] )
+VCPMI <- read_excel('data/Family Metrics - CPMI Combined.xlsx')%>%
+  filter(RepNum == 1 & Target_Count == 110 &
+           CollDate >= assessmentPeriod[1] )
+
+stationTable <- read_csv('data/RegionalResults_AU_WQS.csv') %>%
+  # fix periods in column names from excel
+  as_tibble() %>%
+  dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance")
+```
+
+
+# Data manipulation
+
+Now that we have all the data we need to run the assessment, we need to reorganize it to run smoothly through the app assessment functions. 
+
+```{r data manipulation}
+
+conventionals_HUC<- left_join(conventionals, dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, 
+                                                           SPSTDS, ID305B_1, ID305B_2, ID305B_3,
+                                                           STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3), by='FDT_STA_ID') %>%
+  left_join(WQSvalues, by = 'CLASS')
+
+```
+
+
+# Automated assessment
+
+This loop runs the regional assessment for conventionals, metals, and macroinvertebrate data for the input regional statoin table. The run time should be less than two minutes. Completely functionalizing the processes with purrr would speed up processing.
+
+```{r}
+stationTableResults <- monStationTemplate %>%
+      mutate_all(as.character)
+# time it:
+startTime <- Sys.time()
+
+# loop over all sites, not super efficient but get the job done for now
+for(i in 1:nrow(stationTable)){
+  print(paste('Assessing station', i, 'of', nrow(stationTable), sep=' '))
+
+  # pull one station data
+  stationData <- filter(conventionals_HUC, FDT_STA_ID %in% stationTable$FDT_STA_ID[i]) 
+  
+  # separate objects bc some data smashing issues  
+  StationTablePrelimStuff <- StationTableStartingData(stationData)
+  
+  # Fix forced NA's from character to real NA
+  z <- StationTablePrelimStuff %>%
+      mutate_all(as.character)
+  z[z =="NA"] <- NA
+  # manipulate ID305B_1 to get DCR11 watershed ID
+  watID <-  substr(strsplit(as.character(z$ID305B_1), '-')[[1]][2] , 1, 3)
+  z$WATERSHED_ID <- watID 
+  # full station table
+  results <- cbind(z, #StationTableStartingData(stationData),
+                   tempExceedances(stationData),
+                   DOExceedances_Min(stationData), 
+                               pHExceedances(stationData),
+                               bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'E.COLI', 126, 235),'E.COLI') %>% 
+                                 dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
+                               bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
+                                 dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
+                               metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
+                                                   dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'),
+                               acuteNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
+                                 dplyr::select(AcuteAmmonia_VIO, AcuteAmmonia_STAT) %>% 
+                                 dplyr::rename('WAT_TOX_VIO' ='AcuteAmmonia_VIO','WAT_TOX_STAT' = 'AcuteAmmonia_STAT'),
+                               metalsExceedances(filter(Smetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
+                                                   dplyr::select(`ACENAPHTHENE`:ZINC), 'SED_MET') %>%
+                                 dplyr::select(-ends_with('exceedanceRate')),
+                               data.frame(SED_TOX_VIO='Not Analyzed by App', SED_TOX_STAT='Not Analyzed by App'),# Placeholder for sediment toxics
+                               data.frame(FISH_MET_VIO='Not Analyzed by App', FISH_MET_STAT='Not Analyzed by App'), # Placeholder for fish metals
+                               data.frame(FISH_TOX_VIO='Not Analyzed by App', FISH_TOX_STAT='Not Analyzed by App'),# Placeholder for fish toxics
+                               benthicAssessment(stationData,conventionals_sf,VSCI,VCPMI),
+                               countTP(stationData),
+                               countchla(stationData),
+                               data.frame(COMMENTS= 'Not Analyzed by App')) %>%
+    dplyr::select(-ends_with('exceedanceRate'))
+  
+  stationTableResults <- rbind(stationTableResults,results)
+}
+timeDiff = Sys.time()- startTime
+
+```
+It took `r timeDiff` to run ~ 80% of the regional assessment.
+
+Look at results.
+```{r look at results}
+datatable(stationTableResults, extensions = 'Buttons', escape=F, rownames = F, editable = TRUE,
+              options= list(scrollX = TRUE, pageLength = nrow(stationTableResults),
+                            dom='Bt', buttons=list('copy',
+                                                    list(extend='csv',filename=paste('AssessmentResults_',
+                                                                                     paste(assessmentCycle,input$stationSelection, 
+                                                                                           collapse = "_"),Sys.Date(),sep='')),
+                                                    list(extend='excel',filename=paste('AssessmentResults_',
+                                                                                       paste(assessmentCycle,input$stationSelection, 
+                                                                                             collapse = "_"),Sys.Date(),sep=''))))) %>% 
+      # format cell background color based on hidden column
+      formatStyle(c('TEMP_SAMP','TEMP_VIO','TEMP_STAT'), 'TEMP_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('DO_SAMP','DO_VIO','DO_STAT'), 'DO_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('PH_SAMP','PH_VIO','PH_STAT'), 'PH_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('ECOLI_SAMP','ECOLI_VIO','ECOLI_STAT'), 'ECOLI_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('ENTER_SAMP','ENTER_VIO','ENTER_STAT'), 'ENTER_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('WAT_MET_VIO','WAT_MET_STAT'), 'WAT_MET_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('WAT_TOX_VIO','WAT_TOX_STAT'), 'WAT_TOX_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('SED_MET_VIO','SED_MET_STAT'), 'SED_MET_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('BENTHIC_STAT'), 'BENTHIC_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) 
+```
+
+```{r saveResults}
+write.csv(stationTableResults, paste("stationTableResults",Sys.Date(),".csv",sep=''), row.names = FALSE, na="")
+```
+
+
