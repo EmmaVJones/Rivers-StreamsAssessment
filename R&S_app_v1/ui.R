@@ -66,7 +66,7 @@ shinyUI(fluidPage(theme="yeti.css",
                                                    unit) are saved', strong('and the application is re-launched'), 'these changes will be
                                                    reflected in the Rivers and Streams Assessment Tool.')),
                                           h6(strong('To view or change the location of the Regional Assessment Units shapefile sourced
-                                                    by the application, see the AUshapefileLocation.R script.')),
+                                                    by the application, see the AUshapefileLocation.R script.'))
                                           #fileInput('regionalAUshapefile','Choose your Regional Assessment Unit shapefile.',
                                           #          accept = c(".dbf",".prj",".sbn",".sbx",".shp","shp.xml",".shx")),
                                 #          h5('Comment Files'),
@@ -78,13 +78,7 @@ shinyUI(fluidPage(theme="yeti.css",
                                 #                   Streams Assessment Tool updates across IR windows to maintain regional assessment records.'),
                                 #          fileInput('commentFile','Choose most recent comment file.',
                                 #                    accept = c(".csv")),
-                                          hr(),br(),
-                                          h4('Station Table QA'),
-                                          helpText('This automated analysis section highlights any stations from the Conventionals dataset
-                                                   that do not have appropriate Station Table 2.0 information.',
-                                                   span(strong('Failure to address these stations will guarantee they will not be represented
-                                                               in subsequent analyses by the Rivers and Streams Assessment tool.'))),
-                                          DT::dataTableOutput('stationTableMissingStations')),
+                                ),
                                  tabPanel('Watershed Selection',
                                           sidebarPanel(
                                             dynamicSelectInput("DEQregionSelection", "Select DEQ Assessment Region", multiple = FALSE),

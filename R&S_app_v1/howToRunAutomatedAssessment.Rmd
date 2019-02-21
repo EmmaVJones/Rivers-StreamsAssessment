@@ -33,7 +33,9 @@ conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="
 
 # Roger's metals data pull
 WCmetals <- read_excel('data/WATER_METALS_20170712.xlsx')
-Smetals <- read_excel('data/SEDIMENT_20170712.xlsx')
+Smetals <- read_excel('data/SEDIMENT_20170712.xlsx') %>% #fix column name duplications
+  dplyr::select(FDT_STA_ID,`ACENAPHTHENE..194`:`COMMENT..227`) 
+names(Smetals)[2:35] <- gsub( "[..].*", "", names(Smetals)[2:35] )
 
 # Bring in latest EDAS VSCI and (combined) VCPMI queries
 VSCI <- read_excel('data/Family Metrics VSCI Calculation.xlsx')%>%
@@ -66,7 +68,7 @@ conventionals_HUC<- left_join(conventionals, dplyr::select(stationTable, FDT_STA
 
 # Automated assessment
 
-This loop runs the regional assessment for conventionals, metals, and macroinvertebrate data for the input regional statoin table. The run time should be less than two minutes. Completely functionalizing the processes with purrr would speed up processing.
+This loop runs the regional assessment for conventionals, metals, and macroinvertebrate data for the input regional station table. The run time should be less than two minutes. Completely functionalizing the processes with purrr would speed up processing.
 
 ```{r}
 stationTableResults <- monStationTemplate %>%
@@ -124,9 +126,20 @@ timeDiff = Sys.time()- startTime
 ```
 It took `r timeDiff` to run ~ 80% of the regional assessment.
 
+
+Last thing, to help assessors speed up comment process and help identify where data that is not overviewed in app should be carried forward, attach last cycle's comments to the stations present in this cycle.
+
+```{r attach previous cycle comments}
+stationTableResultsWithComments <- left_join(stationTableResults, 
+                                             select(stationTable, STATION_ID, Notes), by = 'STATION_ID') %>%
+  rename('Last Cycle Comment' = 'Notes')
+```
+
+
+
 Look at results.
 ```{r look at results}
-datatable(stationTableResults, extensions = 'Buttons', escape=F, rownames = F, editable = TRUE,
+datatable(stationTableResultsWithComments, extensions = 'Buttons', escape=F, rownames = F, editable = TRUE,
               options= list(scrollX = TRUE, pageLength = nrow(stationTableResults),
                             dom='Bt', buttons=list('copy',
                                                     list(extend='csv',filename=paste('AssessmentResults_',
@@ -147,8 +160,9 @@ datatable(stationTableResults, extensions = 'Buttons', escape=F, rownames = F, e
       formatStyle(c('BENTHIC_STAT'), 'BENTHIC_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) 
 ```
 
+Save results.
 ```{r saveResults}
-write.csv(stationTableResults, paste("stationTableResults",Sys.Date(),".csv",sep=''), row.names = FALSE, na="")
+write.csv(stationTableResultsWithComments, paste("stationTableResults",Sys.Date(),".csv",sep=''), row.names = FALSE, na="")
 ```
 
 

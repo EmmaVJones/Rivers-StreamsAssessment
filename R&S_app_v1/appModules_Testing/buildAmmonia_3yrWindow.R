@@ -70,7 +70,8 @@ acuteNH3limit <- function(x){
 
 #dataFrame <-ammonia
 #dateTimeColumn <- 'FDT_DATE_TIME2'
-lastXyears <- function(dataFrame, dateTimeColumn, nYears){
+consecutive <- T #F
+lastXyears <- function(dataFrame, dateTimeColumn, nYears, consecutive){
   uniqueYears <- dplyr::select(dataFrame, dateTimeColumn) %>% 
     mutate(sampleYear = lubridate::year(get(dateTimeColumn))) %>% 
     distinct(sampleYear) %>% 
@@ -79,11 +80,30 @@ lastXyears <- function(dataFrame, dateTimeColumn, nYears){
   nYearsConversion <- nYears-1
   
   if(length(uniqueYears) > nYearsConversion){
-    sort(uniqueYears)[(length(uniqueYears)-nYearsConversion):length(uniqueYears)]
-  } else { sort(uniqueYears)}
+    years <- sort(uniqueYears)[(length(uniqueYears)-nYearsConversion):length(uniqueYears)]
+  } else { 
+    years <- sort(uniqueYears)}
+  
+  if(consecutive == TRUE){
+    suppressWarnings(suppressMessages(
+      for(i in length(years):1){
+        z <- abs(diff(c(years[i], years[i-1])))
+        if (z != 1 | i == 0) break 
+      }))
+    consecutiveYears <- years[i:length(years)]
     
+    if(length(consecutiveYears) == 1){
+      previousEntry <- years[which(years==consecutiveYears)-1]
+      if(consecutiveYears - previousEntry <= 3){return(c(previousEntry, consecutiveYears))}
+    } else {
+      return(consecutiveYears)
+    }
+  
+  
+   
+  } else { return(years)  }
 }
-#lastXyears(dataFrame, dateTimeColumn, 7)
+#lastXyears(dataFrame, dateTimeColumn, 7, consecutive = T)
 
 
 
