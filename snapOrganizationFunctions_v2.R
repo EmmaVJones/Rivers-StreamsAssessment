@@ -251,6 +251,9 @@ snapAndOrganizeWQS <- function(AUsnappedSites, WQSfileLocation, basinName, buffe
   print(paste('Bringing in appropriate WQS file for',basinName))
   WQS <- st_read(paste(WQSfileLocation,'updated',basinName,'.shp', sep='')) %>%
     st_transform(crs = 102003) # convert to Albers Equal Area just for snapping
+  # Make sure AUsnappedSites in Albers
+  AUsnappedSites <- AUsnappedSites %>% st_transform(crs = 102003) # convert to Albers Equal Area just for snapping
+  
   # snapping logic
   print(paste('Snapping sites to WQS by:',min(bufferDistances),'to', max(bufferDistances), 'meters', sep=' '))
   snapList_WQS <- snap_Points_to_Feature_List(AUsnappedSites,'FDT_STA_ID',WQS, bufferDistances)

@@ -250,7 +250,7 @@ conventionals_D_Region_Lakes <- st_join(conventionals_D_Region_NoAU, reservoirAU
   dplyr::select(names(conventionals_D_Region_AU))
 
 # add lake AU sites to conventionals_D_Region_AU
-conventionals_D_Region_AU <- bind_rows(conventionals_D_Region_AU, conventionals_D_Region_Lakes)
+conventionals_D_Region_AU <- rbind(conventionals_D_Region_AU, conventionals_D_Region_Lakes)
 
 # and remove lake AU sites from the sites without AUs
 conventionals_D_Region_NoAU <- filter(conventionals_D_Region_NoAU, !(FDT_STA_ID %in% conventionals_D_Region_Lakes$FDT_STA_ID))
@@ -304,7 +304,9 @@ DT::datatable(Regional_Sites_AU, escape=F, rownames = F, options = list(scrollX 
 #View(Regional_Sites_AU)
 
 
-conventionals_D_Region_AU <- bind_rows(conventionals_D_Region_AU, Regional_Sites_AU, conventionals_D_Region_NoAU)
+conventionals_D_Region_AU <- rbind(conventionals_D_Region_AU, 
+                                    Regional_Sites_AU %>% st_transform( st_crs(4326)), 
+                                    conventionals_D_Region_NoAU %>% st_transform( st_crs(4326)))
 
 rm(Regional_Sites_AU) # clean up workspace
 ```
@@ -323,15 +325,55 @@ We will bring in the updated WQS reservoir layer, to attach to stations that are
 reservoirAUs <- as.character(st_read('GIS/draft2018IR_AUs/va_2018_aus_reservoir.shp')$ID305B)
 
 # Separate lake stations from stream stations
-z2 <- filter(z, STA_LV1_CODE == 'RESERV')
-
-z <- z %>% st_geometry(NULL)
-
 reservoirStations <- filter(conventionals_D_Region_AU, ID305B_1 %in% unique(reservoirAUs) |
                               ID305B_2 %in% unique(reservoirAUs) | ID305B_3 %in% unique(reservoirAUs))
+
+# Bring in reservoir WQS
+reservoirWQS <- st_read('GIS/updatedWQS/reservoir.shp') %>%
+   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+# find lake WQS
+reservoirStationsWQS <- st_join(reservoirStations, reservoirWQS, join = st_intersects) %>%
+  filter(!is.na(OBJECTID)) # only keep rows where join successful
+#View(reservoirStationsWQS)
+
+# Run all stations that didn't connect to lake WQS polygon through streams snapping tool
+riverineStationsWQS <- filter(conventionals_D_Region_AU, !(FDT_STA_ID %in% reservoirStationsWQS$FDT_STA_ID))
                               
+# Make sure we didn't lose anyone
+nrow(riverineStationsWQS) + nrow(reservoirStationsWQS) == nrow(conventionals_D_Region_AU)
+
+rm(reservoirWQS);rm(reservoirAUs); rm(reservoirStations) # clean up workspace
+```
+
+
+All stations that did not attach to a lake AU will be run below as a stream site. This stream WQS snapping tool behaves the same way as the AU snapping tool; however, we are bringing in basins for snapping one at a time because the WQS files are so large. The tool will handle the organization and snapping by basin. You are only responsible for using the gadget that pops up in the Viewer panel when each basin prompts you. You can see the progress below the chunk. This is the most computationally heavy part of the process.
+
+
+
+```{r attachStreamWQS, echo=F}
+#AUsnappedSites <- riverineStationsWQS
+#WQSfileLocation <- 'GIS/updatedWQS/'
+#basinName
+#bufferDistances <- seq(10,80,by=10)
+  
+  
+  
+regionalOutput <- list()
+# Loop through multiple basins
+for (i in 1:length(unique(riverineStationsWQS$Basin))){
+  Regional_Sites_AU_basin <- filter(riverineStationsWQS, Basin %in% unique(riverineStationsWQS$Basin)[i] )
+  WQSsnaps <- snapAndOrganizeWQS(Regional_Sites_AU_basin, 'GIS/updatedWQS/', 
+                                 basinNameSwitcher(unique(riverineStationsWQS$Basin)[i]),  seq(10,50,by=10))
+  regionalOutput[[i]] <- WQSsnaps
+}
+
+# smash it all back together
+RegionalResults <- do.call("rbind", lapply(regionalOutput, data.frame))
 
 ```
+
+Need to make reservoirStationsWQS match the WQS format for rivers
 
 
 
