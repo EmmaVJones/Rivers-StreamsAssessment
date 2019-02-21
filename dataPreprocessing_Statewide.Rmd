@@ -259,7 +259,7 @@ rm(reservoirAUs); rm(conventionals_D_Region_Lakes) # remove from memory
 
 #### Last Cycle Riverine Assessment Layer
 
-```{r inlineText4}
+```{r inlineText4, echo=F}
 cat(paste('The last step for AU organization after we have removed any estuary sites and dealt with all sites that are in lake AUs is to automatically snap the', nrow(conventionals_D_Region_NoAU), 'remaining sites to riverine AUs.',sep=' '))
 ```
 
@@ -288,7 +288,7 @@ rm(riverineAUs) #clean up workspace
 We can now filter the results to figure out sites that worked and sites that still need special attention. 
 
 Below are the sites that still need work.
-```{r conventionals_D_Region_NoAU still}
+```{r conventionals_D_Region_NoAU still, echo=F}
 conventionals_D_Region_NoAU <- filter(Regional_Sites_AU, is.na(ID305B_1))
 DT::datatable(conventionals_D_Region_NoAU, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(conventionals_D_Region_NoAU)
@@ -298,7 +298,7 @@ These sites will still be snapped to WQS, but they still need AU information bef
 
 
 Below are the sites that worked. These can be combined with our conventionals_D_Region_AU layer now. 
-```{r Regional_Sites_AUgood}
+```{r Regional_Sites_AUgood, echo=F}
 Regional_Sites_AU <- filter(Regional_Sites_AU, !is.na(ID305B_1))
 DT::datatable(Regional_Sites_AU, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(Regional_Sites_AU)
@@ -316,6 +316,22 @@ Now all the stations need water quality standards attached as the final data org
 
 #### Updated Reservoir WQS layer
 
+We will bring in the updated WQS reservoir layer, to attach to stations that are in lacustrine AU's. 
+
+```{r find Lacustrine AUs, echo=F}
+# Bring reservoir AUs back in just for ID305B options
+reservoirAUs <- as.character(st_read('GIS/draft2018IR_AUs/va_2018_aus_reservoir.shp')$ID305B)
+
+# Separate lake stations from stream stations
+z2 <- filter(z, STA_LV1_CODE == 'RESERV')
+
+z <- z %>% st_geometry(NULL)
+
+reservoirStations <- filter(conventionals_D_Region_AU, ID305B_1 %in% unique(reservoirAUs) |
+                              ID305B_2 %in% unique(reservoirAUs) | ID305B_3 %in% unique(reservoirAUs))
+                              
+
+```
 
 
 
