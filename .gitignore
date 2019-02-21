@@ -34,3 +34,39 @@ vignettes/*.pdf
 
 # Shiny token, see https://shiny.rstudio.com/articles/shinyapps.html
 rsconnect/
+
+
+
+
+
+
+
+
+
+
+# special files to ignore
+*.csv
+*.zip
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.mdb
+*.docx
+*.Rproj
+.Rproj
+Guidance/
+data/
+GIS/
+Comments/
+workingDatasets/
+conventionals08152018EVJ.csv
+R&S_app_v1/Comments/
+R&S_app_v1/exampleData/
+R&S_app_v1/MaryTestDrive/
+R&S_app_v1/GIS/
+R&S_app_v1/data/
+R&S_app_v1/exampleData/
+R&S_app_v1/MaryTestDrive/
+R&S_portableApp_3.5.2/
+R&S_portableApp_3.5.2.zip 
