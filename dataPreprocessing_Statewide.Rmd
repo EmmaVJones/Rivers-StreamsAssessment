@@ -80,7 +80,7 @@ Below are the regional codes you need to choose from
 unique(assessmentLayer$ASSESS_REG)
 ```
 
-Insert one of those unique code in quotes into the chunk below. The commented out script serves as an example for you.
+Insert one of those unique codes in quotes into the chunk below. The commented out script serves as an example for you.
 
 ```{r DEQ region selection}
 assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG ==    )
@@ -130,6 +130,7 @@ conventionals_D_Region_Estuary <- st_join(conventionals_D_Region, estuaryAUs, jo
 #write.csv(conventionals_D_Region_Estuary, 'C:/Assessment/2020/dataProcessing/conventionals_D_Region_Estuary.csv', row.names = F) 
 
 conventionals_D_Region_NoEstuary <- filter(conventionals_D_Region, !(FDT_STA_ID %in% conventionals_D_Region_Estuary$FDT_STA_ID))
+rm(estuaryAUs) # remove from memory
 ```
 
 Below is the table of sites that are estuarine.
@@ -148,11 +149,12 @@ cat(paste('Removing the above sites, the unique conventionals sites have gone fr
 
 The next step uses the 2018 IR station table as a starting point for linking the stations from the 2020 IR window to the appropriate AU. This is important to do prior to doing any spatial subsetting or snapping because most of the stations from the previous cycle already have QAed assessment unit information readily available and organized. It is computationally less expensive to save any necessary spatial subsetting or snapping to lake/reservoir polygons or stream segments until all joins that can be done with table methods are first completed.
 
-The table below illustrates all the stations from 2018 IR station table that match the unique conventionals sites by Station_ID/FDT_STA_ID.
 ```{r previousCycleStationTable}
 ## This is JUST FOR BRRO RIGHT NOW BECAUSE THERE IS NOT FINAL 2018 STATIONS TABLE
 ## I NEED TO REWRITE TO GET TO SOMETHING LIKE X:\2016_Assessment\GIS_2016\MonitoringStations\ir_mon_stations_2016_FINAL.mdb
 
+
+################################### Only this way for now because dont have one table I can pull this data from ##########################
 # From Mary (Rivers)
 stationTable <- read_excel('data/Emma_Stations2018IR_Draft_Dec.xlsx')[,1:48]
 
@@ -167,14 +169,91 @@ stationTable2 <- distinct(stationTable, STATION_ID, ID305B_1, ID305B_2, ID305B_3
   select(STATION_ID, extra, everything()) %>% # still extras so just take distinct STATION_ID 
   distinct(STATION_ID,.keep_all = T) %>%
   select(-extra) %>%
-  rename("COMMENTS" = "Notes")
+  rename("COMMENTS" = "Notes") %>%
+  select(ID305B_1,ID305B_2,ID305B_3,DEPTH,STATION_ID,REGION,everything()) %>%
+  as_tibble()
 rm(stationTable1)
 
 #From Paula (lakes)
 stationTableLake <- read_excel('data/Paula_tbl_ir_mon_stations_BRRO_2018_JRH_v1 (2).xlsx') %>%
-  dplyr::select(STATION_ID:COMMENTS)
+  dplyr::select(ID305B_1:COMMENTS)
+stationTableLake$SED_MET_VIO <- as.numeric(stationTableLake$SED_MET_VIO)
+
+# Now combine and get rid of duplicate entries
+previousCycleStationTable <- bind_rows(stationTable2,stationTableLake) %>%
+  distinct(stationTable, STATION_ID, ID305B_1, ID305B_2, ID305B_3, .keep_all = T) %>%
+  group_by(STATION_ID) %>%
+  mutate(extra= n()) %>%
+  select(extra, everything())
+
+# special steps because still duplicates with VAC
+dupes <- filter(previousCycleStationTable, extra>1) %>%
+  distinct(STATION_ID,.keep_all = T) %>%
+  select(-extra)
 
 
+previousCycleStationTable <- filter(previousCycleStationTable, extra==1) %>%
+  select(-extra) %>%
+    bind_rows(dupes) %>%
+  filter(!is.na(ID305B_1))
+
+rm(stationTable2);rm(stationTableLake);rm(stationTable); rm(dupes)
+##############################################################################################################
+
+
+# Join unique sites from current cycle to last cycle's station table to see what already has AU info
+conventionals_D_Region_AU <- mutate(conventionals_D_Region_NoEstuary, STATION_ID = FDT_STA_ID) %>% # make joining column
+    left_join(previousCycleStationTable, by='STATION_ID') # join to get ID305B info
+
+# Only work with sites that don't already have AU info
+conventionals_D_Region_NoAU <- filter(conventionals_D_Region_AU, is.na(ID305B_1))
+#View(conventionals_D_Region_NoAU)  
+
+# Keep the stations with AU information to the side for later use
+conventionals_D_Region_AU <- filter(conventionals_D_Region_AU, !is.na(ID305B_1))
+#View(conventionals_D_Region_AU)
+```
+
+
+The table below illustrates all the  unique conventionals sites that matched stations from 2018 IR station table by STATION_ID/FDT_STA_ID.
+```{r conventionals_D_Region_AU, echo=F}
+DT::datatable(conventionals_D_Region_AU, escape=F, rownames = F, options = list(scrollX = TRUE))
+#View(conventionals_D_Region_Estuary)
+```
+
+The table below illustrates all the unique conventionals sites that did not match any stations from 2018 IR station table by STATION_ID/FDT_STA_ID.
+```{r conventionals_D_Region_NoAU, echo=F}
+DT::datatable(conventionals_D_Region_NoAU, escape=F, rownames = F, options = list(scrollX = TRUE))
+#View(conventionals_D_Region_Estuary)
+```
+
+
+```{r inlineText3, echo=F}
+cat(paste('Working with the ', nrow(conventionals_D_Region_NoAU),' sites that did not connect to a STATION_ID/FDT_STA_ID from last cycle, we will first do a spatial join to the reservoir/lakes AUs to see if any sites are lake sites before using the more computationally intensive stream snapping process.', sep=''))
+```
+
+
+```{r reservoirStatewide, echo=F, results = 'hide'}
+reservoirAUs <- st_read('GIS/draft2018IR_AUs/va_2018_aus_reservoir.shp') %>%
+   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+# find lake AUs, if Any
+conventionals_D_Region_Lakes <- st_join(conventionals_D_Region_NoAU, reservoirAUs, join = st_intersects) %>%
+  filter(!is.na(OBJECTID)) %>% # only keep rows where join successful
+  mutate(ID305B_1 = ID305B) %>% # rename ID305B_1 field by the joined reservoir ID305B
+  dplyr::select(names(conventionals_D_Region_AU))
+
+# add lake AU sites to conventionals_D_Region_AU
+conventionals_D_Region_AU
+
+## WQS???
+
+conventionals_D_Region_NoAU <- filter(conventionals_D_Region_NoAU, !(FDT_STA_ID %in% conventionals_D_Region_Lakes$FDT_STA_ID))
+rm(reservoirAUs) # remove from memory
+```
+
+
+```{r}
 BRRO_Sites_AU <- reactive({
   req(stationTable(), conventionals_D_Region_NoEstuary())
   snapAndOrganizeAU(conventionals_D_Region_NoEstuary()[1:80,], st_read('GIS/va_2016_aus_riverine_WGS84.shp') %>%
