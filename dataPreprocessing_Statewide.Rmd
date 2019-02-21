@@ -19,7 +19,7 @@ suppressPackageStartupMessages(library(miniUI))
 suppressPackageStartupMessages(library(DT))
 
 source('snapFunctions.R') # snapping functions
-source('snapOrganizationFunctions.R') # functions to do stuff with snapping functions
+source('snapOrganizationFunctions_v2.R') # functions to do stuff with snapping functions
 ```
 
 This document walks users through the requisite data preprocessing steps to prepare data for the 2020 IR Rivers and Streams Assessment and 2020 IR Lakes Assessment decision support applications. All initial steps are tested on 2016 and 2018 IR data and thus need to be rerun for 2020 data when those datasets become available.
@@ -83,7 +83,8 @@ unique(assessmentLayer$ASSESS_REG)
 Insert one of those unique codes in quotes into the chunk below. The commented out script serves as an example for you.
 
 ```{r DEQ region selection}
-assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG ==    )
+assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == 'BRRO')
+#assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG ==    )
 #assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == 'BRRO')
 ```
 
@@ -96,6 +97,8 @@ conventionals_D_Region <- st_join(conventionals_D, assessmentLayerSelection, joi
   dplyr::select(FDT_STA_ID:STA_CBP_NAME, VAHU6, sameVAHU6) %>% # just get columns we are interested in
   rename('Basin' =  'Basin.x') %>% # rename column to original name pre join
   dplyr::select(FDT_STA_ID:STA_CBP_NAME) # get rid of the extra VAHU6 columns
+
+rm(conventionals_D); rm(assessmentLayer) # clean up workspace
 
 cat(paste('Below are the ',nrow(conventionals_D_Region),' unique stations in the ', unique(assessmentLayerSelection$ASSESS_REG),' region.', sep=''))
 ```
@@ -144,6 +147,7 @@ DT::datatable(conventionals_D_Region_Estuary, escape=F, rownames = F, options = 
 cat(paste('Removing the above sites, the unique conventionals sites have gone from ', nrow(conventionals_D_Region),' to ',nrow(conventionals_D_Region_NoEstuary),'. The next step is to find the lake/reservoir stations and link them to the appropriate AU and WQS for analyses in the Lake Assessment App.', sep=''))
 ```
 
+### Assessment Unit Organization
 
 #### Last Cycle Stations Table
 
@@ -212,6 +216,8 @@ conventionals_D_Region_NoAU <- filter(conventionals_D_Region_AU, is.na(ID305B_1)
 # Keep the stations with AU information to the side for later use
 conventionals_D_Region_AU <- filter(conventionals_D_Region_AU, !is.na(ID305B_1))
 #View(conventionals_D_Region_AU)
+
+rm(conventionals_D_Region_NoEstuary) # clean up workspace
 ```
 
 
@@ -227,11 +233,11 @@ DT::datatable(conventionals_D_Region_NoAU, escape=F, rownames = F, options = lis
 #View(conventionals_D_Region_Estuary)
 ```
 
+#### Last Cycle Reservoir Assessment Layer 
 
 ```{r inlineText3, echo=F}
 cat(paste('Working with the ', nrow(conventionals_D_Region_NoAU),' sites that did not connect to a STATION_ID/FDT_STA_ID from last cycle, we will first do a spatial join to the reservoir/lakes AUs to see if any sites are lake sites before using the more computationally intensive stream snapping process.', sep=''))
 ```
-
 
 ```{r reservoirStatewide, echo=F, results = 'hide'}
 reservoirAUs <- st_read('GIS/draft2018IR_AUs/va_2018_aus_reservoir.shp') %>%
@@ -244,62 +250,81 @@ conventionals_D_Region_Lakes <- st_join(conventionals_D_Region_NoAU, reservoirAU
   dplyr::select(names(conventionals_D_Region_AU))
 
 # add lake AU sites to conventionals_D_Region_AU
-conventionals_D_Region_AU
+conventionals_D_Region_AU <- bind_rows(conventionals_D_Region_AU, conventionals_D_Region_Lakes)
 
-## WQS???
-
+# and remove lake AU sites from the sites without AUs
 conventionals_D_Region_NoAU <- filter(conventionals_D_Region_NoAU, !(FDT_STA_ID %in% conventionals_D_Region_Lakes$FDT_STA_ID))
-rm(reservoirAUs) # remove from memory
+rm(reservoirAUs); rm(conventionals_D_Region_Lakes) # remove from memory
+```
+
+#### Last Cycle Riverine Assessment Layer
+
+```{r inlineText4}
+cat(paste('The last step for AU organization after we have removed any estuary sites and dealt with all sites that are in lake AUs is to automatically snap the', nrow(conventionals_D_Region_NoAU), 'remaining sites to riverine AUs.',sep=' '))
+```
+
+A custom, automated snapping tool is run below. The function buffers each site using the user defined sequence (bufferDistances). You do not need to change the bufferDistances variable, but commented out code demonstrates how you can if you want to increase/decrease the maximum buffer distance or breaks. 
+
+The function first buffers the site the lowest input buffer distance, then it intersects that buffer with the input assessment unit layer. If no segments are retrieved in the given buffer distance, then the next highest buffer is tried and so on until the maximum buffer distance is tested. If one or more segments are captured in a given buffer, then the buffering process stops, returns the snapped stream segment information, and moves to the next site. If more that one site is captured in a single buffer, then those segments will be provided to the user to choose from in an interactive gadget to keep only one AU per site after all buffering has finished. If the maximum buffer distance does not yield any stream segments, then those sites will be returned to the user for special QA and manual table completion after the report is finished. It is advised that you investigate the site further and potentially correct site coordinates in CEDS to prevent future problems. 
+
+**Note: All stations you want to use in the assessment applications require AU information. If no AU information is provided to the app with a StationID, then the station will not appear in the app and could potentially be lost until further QA.**
+
+The next chunk will bring in the riverine AU layer from the previous cycle, complete the snapping tool, ask for user input in the form of a gadget in the viewer panel if sites snap to multiple segments in a single buffer, and then organize results. You can see the progress and results of the tool below the chunk.
+
+```{r riverineAUsnap, echo=FALSE}
+# use a custom snapping tool to snap and organize 
+riverineAUs <-  st_read('GIS/draft2018IR_AUs/va_2018_aus_riverine.shp') %>%
+  st_transform(crs = 102003)  # transform to Albers for spatial intersection
+
+Regional_Sites_AU <- snapAndOrganizeAU(conventionals_D_Region_NoAU, riverineAUs,  bufferDistances = seq(10,50,by=10))
+# this buffers up to 100 m by 10 m
+#Regional_Sites_AU <- snapAndOrganizeAU(conventionals_D_Region_NoAU, riverineAUs, bufferDistances = seq(10,100,by=10)) 
+ # this buffers up to 50 m by 5 m
+#Regional_Sites_AU <- snapAndOrganizeAU(conventionals_D_Region_NoAU, riverineAUs, bufferDistances = seq(10,50,by=5))
+
+rm(riverineAUs) #clean up workspace
+```
+
+We can now filter the results to figure out sites that worked and sites that still need special attention. 
+
+Below are the sites that still need work.
+```{r conventionals_D_Region_NoAU still}
+conventionals_D_Region_NoAU <- filter(Regional_Sites_AU, is.na(ID305B_1))
+DT::datatable(conventionals_D_Region_NoAU, escape=F, rownames = F, options = list(scrollX = TRUE))
+#View(conventionals_D_Region_NoAU)
+```
+
+These sites will still be snapped to WQS, but they still need AU information before they can be run through the assessment applications. A reminder at the end of the report will encourage users to complete that step.
+
+
+Below are the sites that worked. These can be combined with our conventionals_D_Region_AU layer now. 
+```{r Regional_Sites_AUgood}
+Regional_Sites_AU <- filter(Regional_Sites_AU, !is.na(ID305B_1))
+DT::datatable(Regional_Sites_AU, escape=F, rownames = F, options = list(scrollX = TRUE))
+#View(Regional_Sites_AU)
+
+
+conventionals_D_Region_AU <- bind_rows(conventionals_D_Region_AU, Regional_Sites_AU, conventionals_D_Region_NoAU)
+
+rm(Regional_Sites_AU) # clean up workspace
 ```
 
 
-```{r}
-BRRO_Sites_AU <- reactive({
-  req(stationTable(), conventionals_D_Region_NoEstuary())
-  snapAndOrganizeAU(conventionals_D_Region_NoEstuary()[1:80,], st_read('GIS/va_2016_aus_riverine_WGS84.shp') %>%
-  st_transform(crs = 102003), # convert to Albers Equal Area just for snapping
- stationTable(), seq(10,80,by=10))
-})
+### WQS Organization
 
-DT::renderDataTable({
-  DT::datatable(BRRO_Sites_AU(), escape=F, rownames = F,
-                options = list(#pageLength=2, lengthMenu = c(2, 5, 10, 20),
-                               scrollX = TRUE))})
+Now all the stations need water quality standards attached as the final data organization step in order to be used by the assessment apps. Regardless of whether or not a site snapped to an AU, the report will walk users through connecting each site to WQS features. First, we will start with lakes to save the computationally heavier stream snapping tool for only the sites that need it.
+
+#### Updated Reservoir WQS layer
 
 
-```
-
-```{r inlineText3}
-# way to get around inline text reactivity issues with shiny/Rmarkdown
-#textOutput("nrowSitesWithoutE")
-
-#output$nrowSitesWithoutE <- renderText({
-#  req(conventionals_D_Region())
-#  paste('Removing the above sites, the unique conventionals sites have gone from ', nrow(conventionals_D_Region()),' to #',nrow(conventionals_D_Region_NoEstuary()),'. The next step is to find the lake/reservoir stations and link them to the appropriate AU and WQS for analyses in #the Lake Assessment App.', sep='')
-#})
-```
-
-```{r stationsNeedSpatialWork}
-
-```
 
 
-#### Last Cycle Reservoir Assessment Layer
-
-By bringing in the `r previousCycleNumber` reservoir layer and finding all unique conventionals sites that fall into the polygons, we can further limit the number of stream AUs that may need hands on QA. The process completed below:
-
-1. Brings in the `r previousCycleNumber` reservoir layer.
-2. Join the reservoir attribute table to connect any sites that have AU information from last cycle to the previous AU.
-
-```{r lakesLayer}
-#lakeAUs <- st_read('GIS/draft2018IR_AUs/va_2018_aus_reservoir.shp') %>%
-#   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 
-#conventionals_D_Region_Estuary <- reactive({
-#  req(conventionals_D_Region())
-#    st_join(conventionals_D_Region(), estuaryAUs, join = st_intersects) %>%
-#      filter(!is.na(OBJECTID))
-#})
-```
+
+
+
+
+
+
 
