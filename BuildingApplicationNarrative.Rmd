@@ -1,0 +1,473 @@
+---
+title: "Rivers & Streams Assessment Data Preprocessing"
+author: "Emma Jones"
+date: "November 8, 2018"
+output: html_document
+---
+
+#### Run in R version 3.5.1 "Feather Spray"
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rgdal)
+library(rgeos)
+library(plyr)
+library(leaflet)
+library(gWidgets)
+options(guiToolkit="RGtk2")
+
+
+library(sf)
+library(mapview)
+library(units)
+```
+
+## Preprocessing Data for Rivers and Streams Assessment
+
+This document walks users through the necessary steps to organize and manipulate data for inclusion in the 2020 IR Rivers & Streams assessment. 
+
+Because the 2020 IR window includes data from 2013 - 2018 and it is currently November 2018, I cannot start with a 'finalized' raw dataset from Roger Stewart (conventionals dataset he provides all assessors each window). Additionally, the 2018 IR  final datasets, specifically the GIS updates, are not yet published and thus unavaiable for this initial application/workflow building process. As such, I will be working with the 2018 IR raw dataset (CONVENTIONALS_20171010_updated.csv), updated WQS layers, and assessement unit determinations from 2016 IR until more updated data becomes available. 
+
+
+### Bring in raw data
+
+For now we are using data from 2011 - 2016 from the 2018 IR. These same data manipulation steps will apply to final raw datasets from 2013 - 2018 for 2020 IR.
+
+```{r conventionals}
+# CONVENTIONALS.XLSX is a tricky one. First format the PHOSPHORUS column as numeric, 2 decimal places.
+# Then, save Roger's pull as a .csv. Then copy the original FDT_DATE_TIME from the .xlsx file
+# and overwrite that field in the .csv. Last, convert the field in the .csv to Date -> 3/14/01 13:30
+# It is better to use read_csv over read_excel bc memory and time loading app
+conventionals <- suppressWarnings(read_csv('data/conventionals08152018EVJ.csv'))
+conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%y %H:%M")
+
+```
+
+
+Bring in WQS subset of just BRRO watersheds (updated WQS) to start playing around linking datasets. 
+
+```{r WQSsubset}
+BRRO <- readOGR('GIS/WQS2018_BRRO', 'WQS2018_BRRO')
+```
+
+So there is no link from WQM stations to WQS. I can do the geospatial processing steps necessary to link the two, but it will take a lot of processing and is best done outside of an application environment. In the app, I can use that new link to access relevant WQS to each site from a column format to speed processing considerably.
+
+There  will probably be quite a few snapping errors that will appear as I automate those site-stream links. I will need to report all snaps if more than one occurs and visually demonstrate to user where WQS were pulled from. This will benefit the WQS QA process and maybe in the future result in some magical CEDS connection to the NHD with stream segment information already attributed correctly. That way, standards could be adjusted and streams could still be snapped to a segment.
+
+
+Here we test the old snapping tool with new WQS data before we build it into a cleaner function.
+```{r oldSnappingTool}
+## Step 1: Load GIS layers
+# Could also use an excel file of lat/longs (with StationID,LONG_DD, and LAT_DD manditory column names)
+# Will work on that component later
+# Must have WQS and sites in same projection, if not alter @proj4string 
+WQS <- readOGR('C:/HardDriveBackup/R/AssessmentTool/data','wqs_riverine_id305b_2013_albers')
+select <- readOGR('C:/HardDriveBackup/R/AssessmentTool/data','userselecttest20132014') # try to break the userselection section with mutliple sites that need help in 1 file
+
+
+## Step 2: Loop through sites buffering 10, 20, 30, 40, and 50m to connect point to line (stream) 
+# geometry from WQS layer
+output <- data.frame(matrix(NA, ncol = 17, nrow = 0))
+names(output) <- c(names(WQS@data),"SiteID","StationID","Comment")
+for(i in 1:length(select)){
+  print(i)
+  step1 <- gBuffer(select[i,],width=10)
+  step1.2 <-WQS[step1,]
+  if(nrow(step1.2@data)>0){
+    step1.2@data$SiteID <- i
+    step1.2@data$StationID <- select@data$StationID[i]
+    step1.2@data$Comment <- ' '
+    output <- rbind(output,step1.2@data)
+  }else{
+    step2 <- gBuffer(select[i,],width=20)
+    step2.2 <- WQS[step2,]
+    if(nrow(step2.2@data)>0){
+      step2.2@data$SiteID <- i
+      step2.2@data$StationID <- select@data$StationID[i]
+      step2.2@data$Comment <- ' '
+      output <- rbind(output,step2.2@data)
+    }else{
+      step3 <- gBuffer(select[i,],width=30)
+      step3.2 <- WQS[step3,]
+      if(nrow(step3.2@data)>0){
+        step3.2@data$SiteID <- i
+        step3.2@data$StationID <- select@data$StationID[i]
+        step3.2@data$Comment <- ' '
+        output <- rbind(output,step3.2@data)
+      }else{
+        step4 <- gBuffer(select[i,],width=40)
+        step4.2 <- WQS[step4,]
+        if(nrow(step4.2@data)>0){
+          step4.2@data$SiteID <- i
+          step4.2@data$StationID <- select@data$StationID[i]
+          step4.2@data$Comment <- ' '
+          output <- rbind(output,step4.2@data)
+        }else{
+          step5 <- gBuffer(select[i,],width=50)
+          tryCatch({
+            step5.2 <- WQS[step5,]
+            if(nrow(step5.2@data)>0){
+              step5.2@data$SiteID <- i
+              step5.2@data$StationID <- select@data$StationID[i]
+              step5.2@data$Comment <- ' '
+              output <- rbind(output,step5.2@data)
+            }else{
+              message <- data.frame(matrix(0,ncol=17,nrow=1))
+              names(message) <- names(output)
+              message$SiteID <- i
+              message$StationID <- select@data$StationID[i]
+              message$Comment <- 'use GIS for this site'
+              output <- rbind(output,message)}
+          })
+        }
+      }
+    }
+  }
+}
+
+```
+
+Did any sites connect to too many stream geometries?
+```{r results='hide',echo=FALSE, message=FALSE, warning=FALSE}
+## Step 3 : Test if there were multiple connections made to a single site 
+output2 <- output %>%
+  group_by(StationID) %>%
+  ddply(c('SiteID','StationID'),summarise,records=length(StationID)) 
+
+# Look through output2 results and subset StationID's that grabbed +1 geometry
+df <- data.frame(StationID=character(),SiteID=numeric())
+for(i in 1:nrow(output2)){
+  if(output2$records[i]==1){
+    print(i)
+  }else{
+    placehold <- data.frame(StationID=as.character(output2$StationID[i]),SiteID=i)
+    df <- rbind(df,placehold)
+    rm(placehold)}
+}
+# Join results to output dataframe to attach geometry information
+df1 <- join(df,output,by=c('StationID','SiteID'))
+```
+
+Review sies that grabbed more than one geometry.
+```{r,echo=FALSE}
+if(nrow(df1)>1){print(df1[,c(1,3:4)])}
+```
+
+Auto selection and user selection logic loop (for sites attached to too many geometries)
+```{r}
+# The Money loop: Loop with logic to deal with multiple geometries if encountered in buffering process
+# This uses an automatic selection if a StationID has multiple geometries with the same WQS_ID
+#  (it chooses the first entry) and a user selection component if a StationID has multiple
+#  geometries with multiple WQS_ID's
+sitelist <- list()
+autoselectentry <- data.frame()
+userselectentry <- data.frame()
+
+# User input function, pops up when more than one geometry is identified for a single site and
+#  requires user to select which one is correct prior to continuing
+INPUT <- function(x){
+  CHOICE <- NA
+  w <- gbasicdialog(title=x)
+  glabel(paste('Which ID305B is correct for ',siteascharacter,' ?')
+         ,container=w,anchor=c(0,1))
+  rb <- gradio(labellist2,selected=length(labellist)+1,handler = function(h,...) CHOICE <<- svalue(rb)
+               ,container=w)
+  visible(w, set=TRUE)
+  return(CHOICE)
+}
+
+for(i in 1:length(unique(df1$StationID))){
+  if(length(df1$StationID)>1){ 
+    # If 1+ geometries identified in buffer steps then need to make a list of df's with unique 
+    # StationID's to work through  
+    splitStationID <- split(df1, df1$StationID, drop=T) #list of dataframes based on unique StationID's
+    if(length(splitStationID[[i]]$StationID)>1){# If 1+ geometry identified for each StationID
+      # If WQS_ID identical then automatically choose the first in the list
+      if(length(unique(splitStationID[[i]]$WQS_ID))==1){
+        # Save entry to a new dataframe to later append back to main geometry output dataframe
+        splitdfselect <- splitStationID[[i]] # automatically select first entry if WQS_ID are identical
+        autoselectentry <- rbind(autoselectentry,splitdfselect[!duplicated(splitdfselect[,c('StationID','SiteID')]),])
+        # Save StationID to final output list
+        sitelist[i] <- as.character(unique(splitdfselect$StationID))
+      }else{# Then WQS_ID is different for the same StationID so go to user selection
+        # Only load WQS planarized layer if needed and if not loaded into environment already
+        if("WQS_p" %in% ls()){print('Good To GO!')
+        }else(WQS_p <- readOGR('E:/GIS/EmmaGIS/Assessment','wqs_riverine_id305b_2013_Planarized84'))
+        
+      
+        # Select site that is issue
+        site <- factor(unique(splitStationID[[i]]$StationID), levels=levels(output$StationID))
+        num <- which(select@data$StationID %in% site) # Find plotting order of StationID in question
+        # Select geometries that are in question
+        geom <- splitStationID[[i]]$ID305B
+        num2 <- which(WQS_p@data$ID305B %in% geom) # Link selected ID305B info to actual WQS geometry
+        testshape <- WQS_p[num2,]
+        testshape@data$ID305B <- droplevels(testshape@data$ID305B) #get rid of excess factor levels for palette options
+        
+        
+        
+        pal <- colorFactor(rainbow(length(levels(testshape$ID305B))),domain=NULL)
+        
+        l<-leaflet() %>% addProviderTiles('Thunderforest.Outdoors') %>% addPolylines(data=testshape,color=~pal(ID305B), weight=3,group=testshape@data$ID305B,popup=paste('ID305B:',testshape@data$ID305B))
+        l
+         
+        
+        # User geometry selection function
+        # Must trick gradio into working at present by adding extra (blank) factor
+        labellist <- geom
+        labellist2 <- factor(geom, levels=c(levels(geom),'No Answer'))
+        labellist2[length(labellist)+1] <- 'No Answer'
+        siteascharacter <- as.character(site)
+        user.selection <- INPUT("User Geometry Selection")
+        
+        # Select record from df1 that user wants to keep
+        userselectentry <- rbind(userselectentry,df1[which(df1$ID305B %in% user.selection),]) # was df1[which(df1$ID305B %in% user.selection[i]),]
+        # Save StationID to final output list
+        sitelist[i] <- as.character(unique(df1[which(df1$ID305B %in% user.selection),]$StationID))
+        #rm(testshape_prj_f)
+        #dev.off()
+      }
+    }
+  }
+  # Create a final geometry output with only 1 stream geometry per site
+  slimoutput <- filter(output,!(StationID %in% sitelist)) %>%
+    rbind(autoselectentry) %>%
+    rbind(userselectentry)
+}
+# Clean up workspace
+rm(list=ls()[!ls()%in% c('slimoutput')])
+```
+
+That's pretty cool considering it doesnt run in an app, but need to build logic into a function to make it more accessible.
+
+Bring in new WQS layer (just BRRO for testing) and start to build snapping functionality.
+
+```{r newTestData}
+WQS <- st_read('GIS/WQS2018_BRRO/WQS2018_BRRO_albers.shp')
+probSites_xl <- read_csv('C:/HardDriveBackup/R/IR_2018/ProbMonReport/processedData/Wadeable_ProbMon_2001-2016_EVJ.csv') %>%
+  filter(Basin == 'New') # just use New for now bc only have new basin in WQS test dataset
+probSites_sf <- st_as_sf(probSites_xl, 
+                    coords = c("LongitudeDD", "LatitudeDD"), # for point data
+                    remove = F, # don't remove these lat/lon cols from df
+                    crs = 4269) %>% # add projection, needs to be geographic for now bc entering lat/lng, 
+  st_transform( st_crs(WQS))# project to Albers equal area for snapping
+# make sure both layers have same CRS
+identical(st_crs(WQS),st_crs(probSites_sf))
+```
+
+
+```{r spMethodForTesting}
+WQSsp <- readOGR('GIS/WQS2018_BRRO','WQS2018_BRRO_albers')
+probSites_sp <- probSites_xl
+coordinates(probSites_sp) <- ~LongitudeDD+LatitudeDD
+proj4string(probSites_sp) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0 ")  
+probSites_sp <- spTransform(probSites_sp, CRS("+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs"))
+      
+
+```
+
+Test dataset I built that specifically puts points too close to multiple geometries
+```{r messed up sites}
+new1 <- st_read('GIS/2016stationsTEST_new.shp') %>%
+  st_transform( st_crs(WQS))
+new2 <- new1[66:68,]
+new2$StationID <- c('testSite1','testSite2','testSite3')
+
+```
+
+
+I want to make sure I use an excel file to start with to make the function more useable to others. 
+
+
+Starting small, build first function that just buffers sites X distance and lets user know if there is a match with input polyline file. 
+
+```{r bufferFunction}
+POINT <- probSites_sf[1,]
+MULTILINESTRING <- WQS
+distance <- 10
+
+snap_bufferMethod <- function(POINT, MULTILINESTRING, distance){
+  step1 <- st_buffer(POINT,dist = distance)
+  st_zm(MULTILINESTRING) %>% 
+    filter(st_intersects(., st_zm(step1), sparse = FALSE))
+}
+snap_bufferMethod(probSites_sf[1,],WQS,10)
+snap_bufferMethod(probSites_sf[1,],WQS,40)
+
+```
+
+
+```{r}
+st_drop_geometry <- function(x) {
+  if(inherits(x,"sf")) {
+      x <- st_set_geometry(x, NULL)
+      class(x) <- 'data.frame'
+  }
+  return(x)
+}
+```
+
+
+
+Now write outer function that nests buffer function and returns snapped feature(s) starting at user defined buffer distances.
+
+```{r buffer series}
+#POINT <- probSites_sf[1,]
+#POINT_UID_colname <- "StationID"
+#MULTILINESTRING <- WQS
+#bufferDistances <- seq(10,50,by=10)
+
+
+snap_Point_to_Feature <- function(POINT, # sf POINT file
+                                  POINT_UID_colname, # as.character(name of unique identifier in POINT file)
+                                  MULTILINESTRING, # stream network
+                                  bufferDistances # numeric sequence of distances to run buffer, these will be in
+                                  ){              # the unit of the POINT and MULTILINESTRING files
+  # Make a place for data to come out of function that matches the input MULTILINESTRING
+  fun_output <- MULTILINESTRING[1,] %>% 
+    mutate(`Point Unique Identifier` = 'deleteMe', `Buffer Distance` = NA) %>% 
+    select(`Point Unique Identifier`, `Buffer Distance`, everything())
+  
+  x <- 0
+  repeat {
+   x <- x + 1
+   b <- snap_bufferMethod(POINT,MULTILINESTRING,bufferDistances[x])
+   if (nrow(b) > 0 | x == length(bufferDistances)) break 
+  }
+  
+  cn <- as.character(unique(st_set_geometry(POINT,NULL) %>% select_(POINT_UID_colname)))
+  
+  if( nrow(b) == 0 ){
+    
+    b <- tibble(`Point Unique Identifier` = cn,
+                    `Buffer Distance` = paste('No connections within', max(bufferDistances),
+                                        st_crs(POINT)$units, sep = ' '))
+    
+    # OLDEST STUFF
+    #b[1,1:(ncol(b)-1)] <- NA
+    #c <- tibble(`Point Unique Identifier` = cn,
+    #                `Buffer Distance` = paste('No connections within', max(bufferDistances),
+    #                                    st_crs(POINT)$units, sep = ' '))
+    #c1 <- c %>% bind_cols(c,b) 
+    #c <- bind_rows(fun_output, b)
+    #b <- mutate(b,`Point Unique Identifier` = cn,
+    #          `Buffer Distance` = paste('No connections within', max(bufferDistances),
+    #                                    st_crs(POINT)$units, sep = ' ')) %>%
+    #  dplyr::select(`Point Unique Identifier`, `Buffer Distance`)
+    #  bind_rows(fun_output)
+    #b <- dplyr::select(b, `Point Unique Identifier`, `Buffer Distance`)
+    
+    # KINDA working
+    #b <- MULTILINESTRING[1,] %>% 
+    #mutate(`Point Unique Identifier` = cn, 
+    #       `Buffer Distance` = paste('No connections within', max(bufferDistances),
+    #                                    st_crs(POINT)$units, sep = ' ')) %>% 
+    #select(`Point Unique Identifier`, `Buffer Distance`, everything())
+    #b$geometry <- NULL # get rid of incorrect geometry
+    #b[1,3:(ncol(b)-1)] <- NA # correct everything else
+  } else {
+     b <- mutate(b,`Point Unique Identifier` = cn,
+              `Buffer Distance` = paste(bufferDistances[x], 
+                                        st_crs(POINT)$units, sep = ' ')) %>%
+    dplyr::select(`Point Unique Identifier`, `Buffer Distance`, everything())
+  }
+  return(b)
+  }
+ 
+z <- snap_Point_to_Feature(probSites_sf[5,],'StationID',WQS, seq(10,50,by=10))
+
+z <- snap_Point_to_Feature(new2[2,],'StationID',WQS, seq(10,50,by=10))
+z1 <- snap_Point_to_Feature(new2[1,],'StationID',WQS, seq(10,50,by=10))
+
+bind_rows(z1,z)
+
+
+z1.1 <- st_set_geometry(z1,NULL)
+
+bind_rows(z1.1,z)
+
+```
+
+Now extend this to MULTIPOINT features so user can easily use with spreadsheet-like input.
+
+```{r MULTIPOINT buffer}
+MULTIPOINT <- probSites_sf[1:2,]
+POINT_UID_colname <- "StationID"
+MULTILINESTRING <- WQS
+bufferDistances <- seq(10,50,by=10)
+
+snap_Points_to_Feature <- function(MULTIPOINT, # sf MULTIPOINT file
+                                  POINT_UID_colname, # as.character(name of unique identifier in POINT file)
+                                  MULTILINESTRING, # stream network
+                                  bufferDistances # numeric sequence of distances to run buffer, these will be in
+                                  ){              # the unit of the MULTIPOINT and MULTILINESTRING files)
+  
+  # Make a place for data to come out of function that matches the input MULTILINESTRING
+  fun_output <- MULTILINESTRING[1,] %>% 
+    mutate(`Point Unique Identifier` = 'deleteMe', `Buffer Distance` = NA) %>% 
+    select(`Point Unique Identifier`, `Buffer Distance`, everything())
+  
+  # Don't love using a loop here but can't figure out better way at present
+  for(i in 1:nrow(MULTIPOINT)) {
+    print(paste('Snapping Point ',i,' of ',nrow(MULTIPOINT), sep = ''))
+    z <- snap_Point_to_Feature(MULTIPOINT[i,], POINT_UID_colname, MULTILINESTRING, bufferDistances)
+    fun_output <- suppressWarnings( fun_output %>% bind_rows(z) )
+  }
+  return(fun_output)
+  #return(filter(fun_output, `Point Unique Identifier` != 'deleteMe')) # get rid of template row
+}
+
+z <- snap_Points_to_Feature(probSites_sf[1:2,],'StationID',WQS, seq(10,50,by=10))
+
+z <- snap_Points_to_Feature(new2[1:3,],'StationID',WQS, seq(10,50,by=10))
+
+filter(z, `Point Unique Identifier` != 'deleteMe')
+
+```
+
+Try multipoint funciot with list output where one part sf object for things that worked and a separate dataframe that need user review.
+
+```{r try multipoint with list output}
+MULTIPOINT <- new2[1:3,]
+POINT_UID_colname <- "StationID"
+MULTILINESTRING <- WQS
+bufferDistances <- seq(10,50,by=10)
+
+
+snap_Points_to_Feature_List <- function(MULTIPOINT, # sf MULTIPOINT file
+                                  POINT_UID_colname, # as.character(name of unique identifier in POINT file)
+                                  MULTILINESTRING, # stream network
+                                  bufferDistances # numeric sequence of distances to run buffer, these will be in
+                                  ){              # the unit of the MULTIPOINT and MULTILINESTRING files)
+  # Make a list to store the two types of results
+  out_list <- list(sf_output = list(), tbl_output = list() )
+  
+  # Don't love using a loop here but can't figure out better way at present
+  for(i in 1:nrow(MULTIPOINT)) {
+    print(paste('Snapping Point ',i,' of ',nrow(MULTIPOINT), sep = ''))
+    z <- snap_Point_to_Feature(MULTIPOINT[i,], POINT_UID_colname, MULTILINESTRING, bufferDistances)
+    if("sf" %in% class(z)){
+      out_list$sf_output <- suppressWarnings( out_list$sf_output %>% bind_rows(z) )
+    } else {
+      out_list$tbl_output <-  suppressWarnings( out_list$tbl_output %>% bind_rows(z) )
+    }
+  }
+ 
+  # Report Results
+  print('Use objectName$sf_output to view successful connections.')
+  print('Use objectName$tbl_output to view sites that did not connect to any segments within the input buffer distances.')
+  
+  return(out_list)
+}
+
+testList <- snap_Points_to_Feature_List(new2[1:3,],'StationID',WQS, seq(10,50,by=10))
+fullList <- snap_Points_to_Feature_List(probSites_sf,'StationID',WQS, seq(10,50,by=10))
+
+```
+
+  
+
+
+  
+   

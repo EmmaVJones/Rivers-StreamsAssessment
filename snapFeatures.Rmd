@@ -1,0 +1,148 @@
+---
+title: "Snapping Features"
+author: "Emma Jones"
+date: "December 7, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+# R 3.5.1
+library(tidyverse)
+library(sf) # library(devtools); install_github("r-spatial/sf") # sf 0.7.2
+library(leaflet)
+library(mapview)
+
+```
+
+## Purpose
+This script walks users through snapping DEQ StationID's (with coordinate information) to the Water Quality Standards spatial layer. The points are then plotted with the snapped WQS segment and features that did not retrieve stream segments or to more than one segment are highlighted for further review. Then, we explore pulling out information from the WQS layer and additional spatial layers to populate a Stations table similar to Mike's MONITOR table.
+
+
+### Snapping Sampling Points to WQS Layer
+
+First we are just going to start with the New River basin WQS layer to keep workflow fast.
+
+Bring in most of 2018 IR window sample data and snapping functions. Filter the statewide sample sites to just New basin. Make a data frame of unique sample sites that need WQS information.
+
+```{r data retrieval}
+
+# functions
+source('snapFunctions.R')
+
+# data
+newWQS <- st_read('GIS/WQS2018_BRRO_albers.shp')
+conventionals <- read_csv('data/conventionals08152018EVJ.csv')
+newSites_sf <- filter(conventionals, Basin == "New River Basin") %>%
+  distinct(FDT_STA_ID, .keep_all = TRUE) %>%
+  select(FDT_STA_ID:FDT_SPG_CODE,STA_LV2_CODE:STA_CBP_NAME) %>% # drop sample data
+  st_as_sf(coords = c("Longitude", "Latitude"), 
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4269) %>% # add projection, needs to be geographic for now bc entering lat/lng, 
+  st_transform( st_crs(newWQS)) # now change crs to Albers to make snapping work
+
+```
+
+Start snapping sites to WQS. Use a 50 meter max buffer and buffer in 10 meter increments. 
+
+```{r snap}
+
+snapList <- snap_Points_to_Feature_List(newSites_sf,'FDT_STA_ID',newWQS, seq(10,50,by=10))
+
+#saveRDS(snapList,'data/snapList_new.RDS')
+#snapList <- readRDS('data/snapList_new.RDS')
+```
+
+Investigate the results.
+
+```{r investigate}
+# sites that didnt find a segment within 50 m
+fail <- snapList[['tbl_output']]
+nrow(fail)
+success <- snapList[['sf_output']]
+length(unique(success$`Point Unique Identifier`))
+
+```
+
+So about half worked with 50m buffer.
+
+Try those that didn't work with 80 m buffer.
+
+```{r try with 80 m buffer}
+newSites_sf2 <- filter(newSites_sf, FDT_STA_ID %in% fail$`Point Unique Identifier`)
+snapList2 <- snap_Points_to_Feature_List(newSites_sf2,'FDT_STA_ID',newWQS, seq(60,100,by=10))
+```
+
+See what snapped in the 60-100m buffer range.
+
+```{r investigate bigger buffer}
+# sites that didnt find a segment within 100 m
+fail2 <- snapList2[['tbl_output']]
+nrow(fail2)
+success2 <- snapList2[['sf_output']]
+length(unique(success2$`Point Unique Identifier`))
+```
+
+Look at what's going on here on a map.
+
+```{r map it}
+noDice <- filter(newSites_sf, FDT_STA_ID %in% fail2$`Point Unique Identifier`)
+
+mapview(noDice) + mapview(newWQS)
+
+```
+
+Not a lot of overlap in newWQS and sites that filtered from conventionals into New basin. Need to figure out what these basin splits are in GIS. The updated WQS layers are split out by DEQ region, not major basin. This may be problematic when giving assessors tools that don't reach beyond their own assessment borders.
+
+
+#### Using assessment region as basis for snapping tool
+
+Try again but with all sites that fall into BRRO to make sure the WQS layers will be sufficient. 
+
+```{r BRRO snaps}
+BRRO_Sites_sf <- filter(conventionals, Deq_Region == "Blue Ridge") %>%
+  distinct(FDT_STA_ID, .keep_all = TRUE) %>%
+  select(FDT_STA_ID:FDT_SPG_CODE,STA_LV2_CODE:STA_CBP_NAME) %>% # drop sample data
+  st_as_sf(coords = c("Longitude", "Latitude"), 
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4269) %>% # add projection, needs to be geographic for now bc entering lat/lng, 
+  st_transform( st_crs(newWQS)) # now change crs to Albers to make snapping work
+
+snapList_allBRRO <- snap_Points_to_Feature_List(BRRO_Sites_sf,'FDT_STA_ID',newWQS, seq(10,50,by=10))
+#saveRDS(snapList_allBRRO, 'data/snapList_allBRRO.RDS')
+snapList_allBRRO <- readRDS('data/snapList_allBRRO.RDS')
+```
+
+```{r investigate bigger allBRRO}
+# sites that didnt find a segment within 100 m
+failBRRO <- snapList_allBRRO[['tbl_output']]
+successBRRO <- snapList_allBRRO[['sf_output']]
+print(paste("number of sites that didn't snap:",nrow(failBRRO)))
+print(paste("number of sites that snapped:",length(unique(successBRRO$`Point Unique Identifier`))))
+print(paste("percent of sites that didn't snap:",(nrow(failBRRO)/nrow(BRRO_Sites_sf))*100))
+```
+
+Not bad, 26% failure rate.
+
+Now a function to identify stations in the success side that snapped to more than one segment.
+
+```{r snapChecker Function}
+# for testing
+#successDataFrame <- snapList_allBRRO[['sf_output']]
+
+snapCheck <- function(successDataFrame){
+  successDataFrame %>%
+    group_by(`Point Unique Identifier`) %>%
+    filter(n()>1)
+  }
+needReview <- snapCheck(snapList_allBRRO[['sf_output']])
+```
+
+
+```{r}
+successDataFrame1 <- successDataFrame %>%
+    st_set_geometry(NULL) %>%
+    distinct(`Point Unique Identifier`, .keep_all = TRUE)
+```
+

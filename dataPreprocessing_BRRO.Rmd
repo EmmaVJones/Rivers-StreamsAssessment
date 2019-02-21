@@ -1,0 +1,610 @@
+---
+title: "Preparing Data for Mary"
+author: "Emma Jones"
+date: "January 29, 2019"
+output: html_document
+---
+
+Run in R 3.5.1
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sf)
+library(readxl)
+library(shiny)
+library(mapview)
+library(leaflet)
+library(miniUI)
+
+```
+
+This document walks users through the requisite data preprocessing steps for the 2020 IR Rivers and Streams Assessment decision support application. All initial steps are tested on 2018 IR data and thus need to be rerun for 2020 data when those datasets become available.
+
+
+### Mary Version
+
+This document demonstrates the necessary steps to get (any) regional office up to speed with prerequisite data organization/processing steps to run the 2020 IR. This version works with BRRO data (WCRO and SCRO) to get Mary ready for assessing.
+
+## Input data
+
+#### Conventionals
+Bring in Roger's conventionals dataset. Make it a csv immediately to speed up rendering in app. This is the final data pull from Roger for the 2018 IR. As of today, the 2020 final IR pull is not available. **Subsitute 2020 data in when available.**
+
+```{r conventionals2018}
+#conventionals <- read_excel('workingDatasets/CONVENTIONALS_20171010.xlsx',sheet = 'CONVENTIONALS')
+#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%y %H:%M")
+#write.csv(conventionals, 'workingDatasets/CONVENTIONALS_20171010.csv', row.names=F)
+
+conventionals <- suppressWarnings(suppressMessages(read_csv('workingDatasets/CONVENTIONALS_20171010.csv')))
+#glimpse(conventionals)
+```
+
+Work with just BRRO for now. Skip step when working up full state data.
+
+```{r BRROconventionals}
+conventionals <- filter(conventionals, Deq_Region == 'Blue Ridge') 
+```
+
+Now we need to make a dataset of all UNIQUE StationID's for the region of interest to work with.
+
+```{r BRROconventionalsDistinct}
+
+conventionals_D <- distinct(conventionals, FDT_STA_ID, .keep_all = T) %>%
+  select(FDT_STA_ID:FDT_SPG_CODE, STA_LV2_CODE:STA_CBP_NAME)# drop data to avoid any confusion
+rm(conventionals)
+```
+
+
+#### Last Cycle's Stations Table
+
+This is a draft from Mary right now, but everything should be in there (Stations and ID305B's). Keep determinations for now even though they are draft.
+
+**There are duplicated rows in this dataset that royally F things up. I have filtered them out for now. Not sure if correct.**
+
+```{r stationTable}
+stationTable <- read_excel('data/Emma_Stations2018IR_Draft_Dec.xlsx')
+
+stationTable1 <- stationTable %>%
+  group_by(STATION_ID) %>%
+  mutate(extra= n()) %>%
+  select(STATION_ID, extra, everything())
+
+stationTable2 <- distinct(stationTable, STATION_ID, ID305B_1, ID305B_2, ID305B_3, .keep_all = T)%>%
+  group_by(STATION_ID) %>%
+  mutate(extra= n()) %>%
+  select(STATION_ID, extra, everything()) %>% # still extras so just take distinct STATION_ID 
+  distinct(STATION_ID,.keep_all = T) %>%
+  select(-extra)
+rm(stationTable1)
+```
+
+
+#### Assessment Spatial Layer (last cycle)
+
+Since 2018 isn't published yet, working from 2016 final layer. 
+
+```{r Assessment Unit shapefile}
+AUs <- st_read('GIS/va_2016_aus_riverine_WGS84.shp') %>%
+  st_transform(crs = 102003) # convert to Albers Equal Area just for snapping
+```
+
+
+
+## Data Organization Step 1: Get AU's from previous cycle for conventionals data.
+
+This step uses last cycle's ID305B columns and joins that information to the conventionals StationID's. This is where all assessments should start. This information **COULD** change if an AU is split through this assessment cycle's assessment process.
+
+```{r join unique StationIDs}
+
+BRRO_Sites <- mutate(conventionals_D, STATION_ID = FDT_STA_ID) %>% # make joining column
+  left_join(stationTable2, by='STATION_ID') %>% # join to get ID305B info
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer while at it
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4269) %>% # add projection, needs to be geographic for now bc entering lat/lng, 
+  st_transform( st_crs(AUs)) # now change crs to Albers to make snapping work
+  
+sum(!is.na(BRRO_Sites$ID305B_1))/nrow(BRRO_Sites)*100 # 73% have last cycle AU info
+sum(is.na(BRRO_Sites$ID305B_1))/nrow(BRRO_Sites)*100 # 27% don't have last cycle AU info
+
+```
+
+
+So basics statistics for now, comparing 2018 IR data from Roger to Mary's almost finished 2018 IR Stations table, still missing 27% of stations ID_305B info??? 
+
+```{r BRRO sites without AU info}
+BRRO_Sites_noAU <- filter(BRRO_Sites, is.na(ID305B_1))
+```
+
+Looking at the BRRO_Sites_noAU dataset we can see the majority of sites are from other regions, but there are still quite a few WCRO stations without AU info. The majority of these are lake stations (STA_LV1_CODE == 'RESERV'). Makes sense, but we will need to fix that eventually.
+
+## Data Organization Step 1.1: Automate AU snapping for StationID's that did not immediately join to last cycle's Station Table 
+
+```{r snapAUs}
+source('snapFunctions.R')
+
+# commented out bc dont want to accidentally run twice
+#snapList_AU <- snap_Points_to_Feature_List(BRRO_Sites_noAU,'FDT_STA_ID',AUs, seq(10,50,by=10))
+snapList_AU <- readRDS('data/allBRRO_snapList_AU.RDS') #prerun results
+
+# function to find sites with +1 segment
+snapCheck <- function(successDataFrame){
+  successDataFrame %>%
+    group_by(`Point Unique Identifier`) %>%
+    filter(n()>1)
+}
+
+# sites that snapped to too many segments
+tooMany <- snapCheck(snapList_AU[['sf_output']])
+length(unique(tooMany$`Point Unique Identifier`)) #13
+
+# perfect sites
+sites <- filter(snapList_AU[['sf_output']], !(`Point Unique Identifier` %in% tooMany$`Point Unique Identifier`)) %>%
+  st_set_geometry(NULL) %>%
+  mutate(FDT_STA_ID=`Point Unique Identifier`)
+nrow(sites) #157
+
+
+#saveRDS(snapList_AU, 'data/allBRRO_snapList_AU.RDS')
+#snapList_AU <- readRDS('data/allBRRO_snapList_AU.RDS')
+```
+
+So out of 230 stations we tried to snap to AUs, 157 snapped to only one segment (good), 13 snapped to more than one segment (okay), and 60 snapped to no segments (not awesome).
+
+
+## Data Organization Step 1.2: Fix StationID's that snapped to too many segments
+
+
+
+Now use shiny gadget to help user select appropriate AU for each of the sites that snapped to too many segments.
+
+```{r my attempt at shiny gadget}
+tooMany <- snapCheck(snapList_AU[['sf_output']] ) %>%
+  st_transform(4326)# project to WGS84 for plotting
+tooMany1 <- filter(tooMany, `Point Unique Identifier` == '2-APP143.57')
+
+siteWithTooMany <- filter(BRRO_Sites_noAU, FDT_STA_ID %in% unique(tooMany$`Point Unique Identifier`)) %>%
+  st_transform(4326)# project to WGS84 for plotting
+siteWithTooMany1 <- filter(siteWithTooMany, FDT_STA_ID =='2-APP143.57')
+
+sfLines <- tooMany1
+sfPoint <- siteWithTooMany1
+
+test <- AUselecter(sfLines, sfPoint) 
+
+AUselecter <- function(sfLines, sfPoint, i, nObjects) {
+  ui <- miniPage(
+  gadgetTitleBar("AU Selection", right = miniTitleBarButton("done", "Accept", primary = TRUE)),
+  miniTabstripPanel(
+    miniTabPanel("Site", icon = icon("mouse-pointer"),#sliders
+                 miniContentPanel(
+                   uiOutput('stationCounter'), br(),hr(),
+                   uiOutput('StationID'), br(),
+                   radioButtons("auChosen", "Choose the correct assessment unit for the site", 
+                                choices = sfLines$ID305B, selected = NULL)#,
+                   #miniButtonBlock(
+                   #  actionButton("chooseAU", "Choose AU"))
+                   )),
+    miniTabPanel("Map", icon = icon("map-o"),
+      miniContentPanel(padding = 0,
+        leafletOutput("map", height = "100%")
+      )),
+    miniTabPanel('Table', icon = icon("table"),
+      miniContentPanel(
+        DT::dataTableOutput("table")))
+    )
+)
+
+
+server <- function(input, output, session) {
+  
+  output$stationCounter <- renderUI({paste('Station Counter:',i, 'of',nObjects)  })
+  
+  output$StationID <- renderUI({strong(paste('StationID:',unique(sfLines$`Point Unique Identifier`)))})
+  
+  output$map <- renderLeaflet({
+    m <- mapview(sfLines, label= sfLines$ID305B, layer.name = c('AUs snapped to selected site'), 
+            zcol = "ID305B", legend=FALSE,
+            popup= popupTable(sfLines, zcol=c("ID305B","MILES","CYCLE","WATER_NAME","LOCATION" )),
+            map.types = c("OpenStreetMap","Esri.WorldImagery")) +
+      mapview(sfPoint, color = 'yellow',lwd= 5, label= sfPoint$FDT_STA_ID, 
+              layer.name = c('Selected Site'),
+              popup= popupTable(sfPoint, zcol=c('FDT_STA_ID','STA_DESC')),
+              map.types = c("OpenStreetMap","Esri.WorldImagery"))
+    m@map 
+      
+  })
+
+  output$table <- DT::renderDataTable({
+    z <- sfLines %>% st_set_geometry(NULL)
+    DT::datatable(z, rownames = FALSE, options= list(pageLength = nrow(z), scrollY = "290px", dom='t'))
+  })
+  
+  #observeEvent(input$chooseAU, {
+  #   userValue <- data.frame(StationID = unique(sfPoint$FDT_STA_ID), ID305B = input$auChosen)
+  #})
+  
+   observeEvent(input$done, {
+     userValue <- data.frame(StationID = as.character(unique(sfPoint$FDT_STA_ID)), 
+                             ID305B = as.character(input$auChosen))
+     stopApp(userValue)
+  })
+}
+
+runGadget(shinyApp(ui, server))
+
+}
+
+```
+
+
+
+```{r loop attempt, eval=FALSE}
+# make test dataset with 4 sites
+tooMany <- snapCheck(snapList_AU[['sf_output']] ) %>%
+  st_transform(4326)# project to WGS84 for plotting
+tooMany4 <- filter(tooMany, `Point Unique Identifier` %in% unique(tooMany$`Point Unique Identifier`)[1:4])
+
+siteWithTooMany <- filter(BRRO_Sites_noAU, FDT_STA_ID %in% unique(tooMany$`Point Unique Identifier`)) %>%
+  st_transform(4326)# project to WGS84 for plotting
+siteWithTooMany4 <- filter(siteWithTooMany, FDT_STA_ID %in% tooMany4$`Point Unique Identifier`)
+
+
+
+StationID <- as.character(nrow(siteWithTooMany4))
+ID305B <- as.character(nrow(siteWithTooMany4))
+
+for (i in 1:nrow(siteWithTooMany4)){
+  zz <- AUselecter(filter(tooMany4, `Point Unique Identifier` %in% siteWithTooMany4[i,]), 
+                          siteWithTooMany4[i,]) 
+  StationID[i] <- as.character(zz[1][[1]])
+  ID305B[i] <- as.character(zz[2][[1]])
+}
+
+results  <- data.frame(StationID, ID305B, stringsAsFactors = FALSE)
+```
+
+
+So in recap, here's the workflow: (need to make function to feed dataset I give assessors into the gadget and another to append results to perfect list)
+
+```{r fix too many snaps}
+# make spatial forms of each object in WGS 84
+tooMany <- snapCheck(snapList_AU[['sf_output']] ) %>%
+  st_transform(4326)# project to WGS84 for plotting
+siteWithTooMany <- filter(BRRO_Sites_noAU, FDT_STA_ID %in% unique(tooMany$`Point Unique Identifier`)) %>%
+  st_transform(4326)# project to WGS84 for plotting
+
+# empty place to put results, save time on processing and dont put in dataframe immediately bc
+# looping is already slow enough
+StationID <- as.character(nrow(siteWithTooMany))
+ID305B <- as.character(nrow(siteWithTooMany))
+
+for (i in 1:nrow(siteWithTooMany)){
+  zz <- AUselecter(filter(tooMany, `Point Unique Identifier` %in% siteWithTooMany[i,]), 
+                          siteWithTooMany[i,], i , nrow(siteWithTooMany)) 
+  StationID[i] <- as.character(zz[1][[1]])
+  ID305B[i] <- as.character(zz[2][[1]])
+}
+
+results  <- data.frame(StationID, ID305B, stringsAsFactors = FALSE)
+
+```
+
+Join back to perfect dataset:
+
+```{r back to perfect}
+# Combine sites that snapped to a segement perfectly the first time
+results1 <- left_join(results, AUs, by='ID305B') %>%
+  mutate(`Buffer Distance` = 'User Selected') %>%
+  dplyr::rename(`Point Unique Identifier` = 'StationID') %>%
+  dplyr::select(`Point Unique Identifier`, `Buffer Distance`, ID305B, OBJECTID, everything(), -geometry) %>%
+  bind_rows(sites) %>% # add perfect sites
+  mutate(FDT_STA_ID=`Point Unique Identifier`)
+
+# Make a dataset that didnt have AU's when joined to stationTable but now does have AU info thanks to
+# auto snapping or manual choice process
+BRRO_Sites_noAU_AU <- filter(BRRO_Sites_noAU, FDT_STA_ID %in% results1$`Point Unique Identifier`) %>%
+  st_set_geometry(NULL) %>%
+  left_join(results1, by = 'FDT_STA_ID') %>%
+  mutate(ID305B_1 = ID305B) %>%
+  select(FDT_STA_ID, ID305B_1)
+
+
+
+BRRO_Sites_AU <- BRRO_Sites %>% # start with sites regardless of AU's
+  left_join(BRRO_Sites_noAU_AU, by = 'FDT_STA_ID') %>%
+  mutate(ID305B_1 = ifelse(is.na(ID305B_1.x), as.character(ID305B_1.y), ID305B_1.x)) %>% # replace with snapped if NA
+  select(FDT_STA_ID:STATION_ID, ID305B_1,ID305B_2:geometry, -c(ID305B_1.x,ID305B_1.y)) 
+
+BRRO_Sites_needVeryManualAU <- filter(BRRO_Sites_AU, is.na(ID305B_1))
+#BRRO_Sites_AU <- filter(BRRO_Sites_AU, !is.na(ID305B_1)) # keep these in for WQS snapping purposes
+rm(BRRO_Sites_noAU_AU);rm(tooMany);rm(BRRO_Sites_noAU);rm(sites)
+```
+
+So here we have 60 sites that need a gadget to buffer farther from site and user to select from those options (BRRO_Sites_needVeryManualAU) and 800 sites that need WQS info and then can go into app (BRRO_Sites_AU).
+
+
+**Originally I was thinking I could force a 1km buffer and make user select from all those AU's (code below) but most of sites are lakes and I dont know if worth their time.** **Skipping for now**
+
+```{r fix very far sites, eval=FALSE}
+
+#snapList_AU_1km <- snap_Points_to_Feature_List(BRRO_Sites_needVeryManualAU[1:10,],'FDT_STA_ID', AUs, seq(100, 1000,by=200))
+#tooMany1km <- snapCheck(snapList_AU_1km[['sf_output']] ) %>%
+#  st_transform(4326)# project to WGS84 for plotting
+#siteWithTooMany1km <- filter(BRRO_Sites, FDT_STA_ID %in% unique(tooMany1km$`Point Unique Identifier`)) %>%
+#  st_transform(4326)# project to WGS84 for plotting
+
+test1 <- snap_Point_to_Feature(BRRO_Sites_needVeryManualAU[1,], # sf POINT file
+                                  'FDT_STA_ID', # as.character(name of unique identifier in POINT file)
+                                  AUs, # stream network
+                                  1000)
+test2 <- snap_Points_to_Feature_List (BRRO_Sites_needVeryManualAU[1:3,], # sf POINT file
+                                  'FDT_STA_ID', # as.character(name of unique identifier in POINT file)
+                                  AUs, # stream network
+                                  1000)[['sf_output']]
+
+# empty place to put results, save time on processing and dont put in dataframe immediately bc
+# looping is already slow enough
+StationID <- as.character(nrow(siteWithTooMany))
+ID305B <- as.character(nrow(siteWithTooMany))
+
+for (i in 1:nrow(siteWithTooMany1km)){
+  zz <- AUselecter(test2, BRRO_Sites_needVeryManualAU[1:3,], i, nrow(BRRO_Sites_needVeryManualAU[1:3,]))
+    #filter(tooMany1km, `Point Unique Identifier` %in% siteWithTooMany1km[i,]), siteWithTooMany1km[i,], i , nrow(siteWithTooMany1km)) 
+  StationID[i] <- as.character(zz[1][[1]])
+  ID305B[i] <- as.character(zz[2][[1]])
+}
+
+results1km  <- data.frame(StationID, ID305B, stringsAsFactors = FALSE)
+
+```
+
+
+
+
+## Get WQS info
+
+Moving on with just sites that have AU information (see note above why) I need to use snapbuffermethod again to join with WQS. 
+
+```{r clean up workspace}
+rm(list=setdiff(ls(), c("BRRO_Sites","BRRO_Sites_AU","BRRO_Sites_needVeryManualAU","stationTable","stationTable2",
+                        "snap_bufferMethod","snap_Point_to_Feature","snap_Points_to_Feature_List","snapCheck",'AUselecter')))
+```
+
+Need to run this one major basin at a time for memory.
+
+```{r split AU into basins}
+unique(BRRO_Sites_AU$Basin)
+
+BRRO_Sites_AU_james <- filter(BRRO_Sites_AU, Basin %in% "James River Basin" )
+BRRO_Sites_AU_roanoke <- filter(BRRO_Sites_AU, Basin %in% "Roanoke River Basin")
+BRRO_Sites_AU_chowan <- filter(BRRO_Sites_AU, Basin %in% "Chowan and Dismal Swamp River Basin" )
+BRRO_Sites_AU_new <- filter(BRRO_Sites_AU, Basin %in%  "New River Basin" )
+
+# Double check we got everyone
+nrow(BRRO_Sites_AU_james)+nrow(BRRO_Sites_AU_roanoke)+nrow(BRRO_Sites_AU_chowan)+nrow(BRRO_Sites_AU_new) == nrow(BRRO_Sites_AU)
+```
+
+```{r WQSselecter}
+WQSselecter <- function(sfLines, sfPoint, i, nObjects) {
+  ui <- miniPage(
+  gadgetTitleBar("WQS Selection", right = miniTitleBarButton("done", "Accept", primary = TRUE)),
+  miniTabstripPanel(
+    miniTabPanel("Site", icon = icon("mouse-pointer"),#sliders
+                 miniContentPanel(
+                   uiOutput('stationCounter'), br(),hr(),
+                   uiOutput('StationID'), br(),
+                   radioButtons("wqsChosen", "Choose the correct WQS segment for the site", 
+                                choices = sfLines$OBJECTID, selected = NULL))),
+    miniTabPanel("Map", icon = icon("map-o"),
+      miniContentPanel(padding = 0,
+        leafletOutput("map", height = "100%")
+      )),
+    miniTabPanel('Table', icon = icon("table"),
+      miniContentPanel(
+        DT::dataTableOutput("table")))
+    )
+)
+
+
+server <- function(input, output, session) {
+  
+  output$stationCounter <- renderUI({paste('Station Counter:',i, 'of',nObjects)  })
+  
+  output$StationID <- renderUI({strong(paste('StationID:',unique(sfLines$`Point Unique Identifier`)))})
+  
+  output$map <- renderLeaflet({
+    sfLines <- mutate(sfLines, OBJID2 = as.character(OBJECTID)) # have to duplicate bc mapview doesnt want to lable using sfLines$OBJECTID
+    m <- mapview(sfLines, label= sfLines$OBJID2, layer.name = c('WQS segmentss snapped to selected site'), 
+            zcol = "OBJECTID", legend=FALSE,
+            popup= popupTable(sfLines, zcol=c("OBJECTID","WQS_COMMEN","WATER_NAME","SEC","CLASS",'SPSTDS','SECTION_DE',
+                                              'PWS','Trout','StreamType','Tier_III')),
+            map.types = c("OpenStreetMap","Esri.WorldImagery")) +
+      mapview(sfPoint, color = 'yellow',lwd= 5, label= sfPoint$FDT_STA_ID, 
+              layer.name = c('Selected Site'),
+              popup= popupTable(sfPoint, zcol=c('FDT_STA_ID','STA_DESC')),
+              map.types = c("OpenStreetMap","Esri.WorldImagery"))
+    m@map 
+      
+  })
+
+  output$table <- DT::renderDataTable({
+    z <- sfLines %>% st_set_geometry(NULL)
+    DT::datatable(z, rownames = FALSE, options= list(pageLength = nrow(z), scrollY = "290px", dom='t'))
+  })
+  
+   observeEvent(input$done, {
+     userValue <- data.frame(StationID = as.character(unique(sfPoint$FDT_STA_ID)), 
+                             OBJECTID = as.character(input$wqsChosen))
+     stopApp(userValue)
+  })
+}
+
+runGadget(shinyApp(ui, server))
+
+}
+```
+
+
+Start with James.
+
+```{r WQS James snap}
+
+WQS_james <- st_read('C:/updatedWQS/updatedJames.shp')%>%
+  st_transform(crs = 102003) # convert to Albers Equal Area just for snapping
+
+
+
+#snapList_WQS_james <- snap_Points_to_Feature_List(BRRO_Sites_AU_james,'FDT_STA_ID',WQS_james, seq(10,50,by=10))
+#saveRDS(snapList_WQS_james, 'data/snapList_WQS_james.RDS')
+snapList_WQS_james <- readRDS('data/allBRRO_snapList_AU.RDS') #prerun results
+
+# sites that snapped to too many segments
+tooMany_james <- snapCheck(snapList_WQS_james[['sf_output']])%>%
+  st_transform(4326)# project to WGS84 for plotting
+length(unique(tooMany_james$`Point Unique Identifier`)) #13
+
+# perfect sites
+sites_james <- filter(snapList_WQS_james[['sf_output']], !(`Point Unique Identifier` %in% tooMany_james$`Point Unique Identifier`)) %>%
+  st_set_geometry(NULL) %>%
+  mutate(FDT_STA_ID=`Point Unique Identifier`)
+nrow(sites_james) #157
+
+# Didn't snap to any WQS in 50m
+noWQS_james <- snapList_WQS_james[['tbl_output']]
+
+# User fix sites that snapped to too many segments
+siteWithTooMany_james <- filter(BRRO_Sites, FDT_STA_ID %in% unique(tooMany_james$`Point Unique Identifier`)) %>%
+  st_transform(4326)# project to WGS84 for plotting
+
+# empty place to put results, save time on processing and dont put in dataframe immediately bc
+# looping is already slow enough
+StationID <- as.character(nrow(siteWithTooMany_james))
+OBJECTID <- as.character(nrow(siteWithTooMany_james))
+
+for (i in 1:nrow(siteWithTooMany_james)){
+  zz <- WQSselecter(filter(tooMany_james, `Point Unique Identifier` %in% siteWithTooMany_james[i,]), 
+                          siteWithTooMany_james[i,], i , nrow(siteWithTooMany_james)) 
+  StationID[i] <- as.character(zz[1][[1]])
+  OBJECTID[i] <- as.character(zz[2][[1]])
+}
+
+results_james  <- data.frame(StationID, OBJECTID, stringsAsFactors = FALSE)
+
+# Combine sites that snapped to a segement perfectly the first time
+results_james$OBJECTID <- as.integer(results_james$OBJECTID) # force to interger so join can happen on that column
+results_jamesWQS <- left_join(results_james, WQS_james, by='OBJECTID') %>%
+  mutate(`Buffer Distance` = 'User Selected', FDT_STA_ID=StationID) %>%
+  dplyr::rename(`Point Unique Identifier` = 'StationID') %>%
+  dplyr::select(`Point Unique Identifier`, `Buffer Distance`, everything(), -geometry) %>%
+  bind_rows(sites_james)  # add perfect sites
+
+
+# Use original basin AU dataset to include those sites that didnt snap to WQS segment within given buffer distances
+BRRO_Sites_AU_WQS_james <- left_join(BRRO_Sites_AU_james, results_jamesWQS, by = 'FDT_STA_ID') %>%
+   st_set_geometry(NULL)
+
+# final thing to give assessors for app  
+write_csv(BRRO_Sites_AU_WQS_james,'data/BRRO_Sites_AU_WQS_james.csv')
+```
+
+
+SO we have something that will go into the app, need to make that whole basin specific process a function and need to spit out final XXXX_Sites_AU_WQS.csv with all data (so user can hand edit if they want), a dataset that will work immediately within app (drop sites that have no AU info or WQS info), and with a dataset that highlights sites that either dont have WQS info or dont have AU info.
+
+Start on that function:
+
+```{r function for WQS snapping and data manipulation}
+# function Inputs
+AUsnappedSites <- BRRO_Sites_AU # ALL sites as sf object, regardless of AU connection or not
+WQSfileLocation <- 'C:/updatedWQS/' # file location of WQS shapefiles
+basinName <- "James River Basin" #unique(AUsnappedSites$Basin)[i]
+bufferDistances <- seq(10,80,by=10)
+
+basinNameSwitcher <- function(conventionalsName){
+  if(conventionalsName == "James River Basin"){return('James')}
+  if(conventionalsName == "Roanoke River Basin"){return('Roanoke')}
+  if(conventionalsName == "Chowan and Dismal Swamp River Basin"){return('ChowanDismalSwamp')}
+  if(conventionalsName == "New River Basin"){return('New')}
+  if(conventionalsName == "Shenandoah River Basin"){return('Shenandoah')}
+  if(conventionalsName == "Potomac River Basin"){return('Potomac')}
+  if(conventionalsName == "Ches. Bay and Small Coastal Basin"){return('ChesBay')}
+  if(conventionalsName == "Rappahannock River Basin"){return('Rappahannock')}
+  if(conventionalsName == "Tennessee and Big Sandy River Basin"){return('TennesseeBigSandy')}
+  if(conventionalsName == "York River Basin"){return('York')}
+  if(is.na(conventionalsName)){return(NA)}
+}
+
+
+snapAndOrganizeWQS <- function(AUsnappedSites, WQSfileLocation, basinName, bufferDistances){
+  # Bring in WQS for basin
+  print('Bringing in appropriate WQS file')
+  WQS <- st_read(paste(WQSfileLocation,'updated',basinName,'.shp', sep='')) %>%
+    st_transform(crs = 102003) # convert to Albers Equal Area just for snapping
+  # snapping logic
+  print(paste('Snapping sites to WQS by:',bufferDistances,'meters', sep=' '))
+  snapList_WQS <- snap_Points_to_Feature_List(AUsnappedSites,'FDT_STA_ID',WQS, bufferDistances)
+  
+  # sites that snapped to too many segments
+  tooMany <- snapCheck(snapList_WQS[['sf_output']])%>%
+    st_transform(4326)# project to WGS84 for plotting
+  
+  # perfect sites
+  sites <- filter(snapList_WQS[['sf_output']], !(`Point Unique Identifier` %in% tooMany$`Point Unique Identifier`)) %>%
+    st_set_geometry(NULL) %>%
+    mutate(FDT_STA_ID=`Point Unique Identifier`)
+  
+  # Didn't snap to any WQS in 80m
+  noWQS <- snapList_WQS[['tbl_output']]
+
+  # User fix sites that snapped to too many segments
+  siteWithTooMany <- filter(AUsnappedSites, FDT_STA_ID %in% unique(tooMany$`Point Unique Identifier`)) %>%
+    st_transform(4326)# project to WGS84 for plotting
+  
+  # Loop to build gadget for each site that snapped to too many sites
+  # empty place to put results, save time on processing and dont put in dataframe immediately bc
+  #   looping is already slow enough
+  StationID <- as.character(nrow(siteWithTooMany))
+  OBJECTID <- as.character(nrow(siteWithTooMany))
+  for (i in 1:nrow(siteWithTooMany)){
+    zz <- WQSselecter(filter(tooMany, `Point Unique Identifier` %in% siteWithTooMany[i,]), 
+                      siteWithTooMany[i,], i , nrow(siteWithTooMany)) 
+    StationID[i] <- as.character(zz[1][[1]])
+    OBJECTID[i] <- as.character(zz[2][[1]])   }
+  
+  results  <- data.frame(StationID, OBJECTID, stringsAsFactors = FALSE)
+  
+  # Combine sites that snapped to a segement perfectly the first time
+  results$OBJECTID <- as.integer(results$OBJECTID) # force to interger so join can happen on that column
+  results_WQS <- left_join(results, WQS, by='OBJECTID') %>%
+    mutate(`Buffer Distance` = 'User Selected', FDT_STA_ID=StationID) %>%
+    dplyr::rename(`Point Unique Identifier` = 'StationID') %>%
+    dplyr::select(`Point Unique Identifier`, `Buffer Distance`, everything(), -geometry) %>%
+    bind_rows(sites)  # add perfect sites
+  
+  # Use original basin AU dataset to include those sites that didnt snap to WQS segment within given buffer distances
+  Sites_AU_WQS <- left_join(AUsnappedSites, results_WQS, by = 'FDT_STA_ID') %>%
+    st_set_geometry(NULL)
+  
+  # final thing to give assessors for app 
+  return(Sites_AU_WQS) # this is essentially a basin specific version of 'data/BRRO_Sites_AU_WQS.csv')
+}
+
+
+regionalOutput <- list()
+# Loop through multiple basins
+for (i in 1:length(unique(AUsnappedSites$Basin))){
+  Regional_Sites_AU_basin <- filter(BRRO_Sites_AU, Basin %in% unique(AUsnappedSites$Basin)[i] )
+  WQSsnaps <- snapAndOrganizeWQS(Regional_Sites_AU_basin[1:10,], 'C:/updatedWQS/', basinNameSwitcher(unique(AUsnappedSites$Basin)[i]))
+  regionalOutput[i] <- WQSsnaps
+}
+
+
+```
+
+To do list:
+- make function to get from snapping function to AU chooser gadget
+- make function to merge results to existing au results
+- organize au results into just csv an assessor could in theory fill out by themselves
+- blow up gadget to handle choosing AU more than 50m away, maybe do 100 m buffer and thow that into gadget map?
+- do logic for WQS snapping
+

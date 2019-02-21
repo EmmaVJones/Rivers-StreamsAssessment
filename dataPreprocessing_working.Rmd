@@ -1,0 +1,193 @@
+---
+title: "2020 IR R&S Data Preprocessing"
+author: "Emma Jones"
+date: "December 14, 2018"
+output: html_document
+---
+
+Run in R 3.5.1
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sf)
+library(readxl)
+
+```
+
+This document walks users through the requisite data preprocessing steps for the 2020 IR Rivers and Streams Assessment decision support application. All initial steps are tested on 2018 IR data and thus need to be rerun for 2020 data when those datasets become available.
+
+## Input data
+
+#### Conventionals
+Bring in Roger's conventionals dataset. Make it a csv immediately to speed up rendering in app.
+```{r conventionals2018}
+#conventionals <- read_excel('workingDatasets/CONVENTIONALS_20171010.xlsx',sheet = 'CONVENTIONALS')
+#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%y %H:%M")
+#write.csv(conventionals, 'workingDatasets/CONVENTIONALS_20171010.csv', row.names=F)
+
+conventionals <- suppressWarnings(suppressMessages(read_csv('workingDatasets/CONVENTIONALS_20171010.csv')))
+#glimpse(conventionals)
+```
+
+Work with just BRRO for now, James basin bc it comes up first. Skip step when working up full state data.
+
+```{r BRROconventionals}
+conventionals <- filter(conventionals, Deq_Region == 'Blue Ridge') %>%
+  filter( Basin == 'James River Basin')# just James
+```
+
+
+#### Last Cycle's Stations Table
+
+This is a draft from Mary right now, but everything should be in there (Stations and ID305B's). Keep determinations for now even though they are draft.
+
+```{r stationTable}
+stationTable <- read_excel('data/Emma_Stations2018IR_Draft_Dec.xlsx')
+```
+
+#### WQS
+Bring in updated WQS for James basin. To get here, I took the updated basin files from each of their respective geodatabases, pulled out the riverine layer, exported to shapefile, and put in C:/updatedWQS directory for easy access.
+```{r WQS}
+#example:
+WQS <- st_read('C:/updatedWQS/updatedJames.shp')%>%
+  st_transform(crs = 102003) # convert to Albers Equal Area just for snapping
+#glimpse(WQS)
+```
+
+So right now, conventionals already has the VAHU5 and VAHU6 designations, stationsTable already has previous ID305B designations and previous violation counts, and all we need to proceed (for field parameters and basic chemistry) is the appropriate WQS info attached to each StationID. For new stations, we will need to snap stations to last cycle's finalized assessment unit shapefile.
+
+#### Assessment Layer (last cycle)
+
+Since 2018 isn't published yet, working from 2016 final layer. 
+
+
+```{r Assessment Unit shapefile}
+AUs <- st_read('GIS/va_2016_aus_riverine_WGS84.shp') %>%
+  st_transform(crs = 102003) # convert to Albers Equal Area just for snapping
+```
+
+
+## Attach Assessment Units, if they exist
+
+This will only work for stations that have info from previous cycle. All new stations will need to be buffered to AUs layer. 
+
+```{r AUconnection}
+BRRO_Sites <- conventionals %>%
+  distinct(FDT_STA_ID, .keep_all = TRUE) %>% # Just unique sites
+  select(FDT_STA_ID:FDT_SPG_CODE,STA_LV2_CODE:STA_CBP_NAME) %>% # drop sample data
+  mutate(STATION_ID = FDT_STA_ID) %>% # make joining column
+  left_join(stationTable, by='STATION_ID') %>% # join to get ID305B info
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer while at it
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4269) %>% # add projection, needs to be geographic for now bc entering lat/lng, 
+  st_transform( st_crs(AUs)) # now change crs to Albers to make snapping work
+  
+sum(!is.na(BRRO_Sites$ID305B_1))/nrow(BRRO_Sites)*100 # 53% have last cycle AU info
+sum(is.na(BRRO_Sites$ID305B_1))/nrow(BRRO_Sites)*100 # 46% don't have last cycle AU info
+```
+
+About half have existing AU information, cool. Will fix no AU sites by snapping to spatial layer with that information.
+
+```{r snapAUs}
+source('snapFunctions.R')
+
+BRRO_Sites_noAU <- filter(BRRO_Sites, is.na(ID305B_1))
+
+snapList_AU <- snap_Points_to_Feature_List(BRRO_Sites_noAU,'FDT_STA_ID',AUs, seq(10,50,by=10))
+```
+
+For now, just drop the sites that didnt snap to an AU segment. Normally we would fix those but aint nobody got time for that now. And drop sites that connected to more than one AU, same reason as above.
+
+```{r AUinfo to sites}
+# function to find sites with +1 segment
+snapCheck <- function(successDataFrame){
+  successDataFrame %>%
+    group_by(`Point Unique Identifier`) %>%
+    filter(n()>1)
+}
+
+tooMany <- snapCheck(snapList_AU[['sf_output']])
+
+sites <- filter(snapList_AU[['sf_output']], !(`Point Unique Identifier` %in% tooMany$`Point Unique Identifier`)) %>%
+  st_set_geometry(NULL) %>%
+  mutate(FDT_STA_ID=`Point Unique Identifier`)
+
+BRRO_Sites_noAU_AU <- filter(BRRO_Sites_noAU, FDT_STA_ID %in% sites$`Point Unique Identifier`) %>%
+  st_set_geometry(NULL) %>%
+  left_join(sites, by = 'FDT_STA_ID') %>%
+  mutate(ID305B_1 = ID305B) %>%
+  select(FDT_STA_ID, ID305B_1)
+
+BRRO_Sites_AU <- BRRO_Sites %>% # start with sites regardless of AU's
+  left_join(BRRO_Sites_noAU_AU, by = 'FDT_STA_ID') %>%
+  mutate(ID305B_1 = ifelse(is.na(ID305B_1.x), as.character(ID305B_1.y), ID305B_1.x)) %>% # replace with snapped if NA
+  select(-c(ID305B_1.x,ID305B_1.y)) %>%
+  filter(!is.na(ID305B_1)) %>%
+  select(FDT_STA_ID:STATION_ID, ID305B_1,ID305B_2:geometry)
+rm(BRRO_Sites_noAU_AU);rm(tooMany);rm(BRRO_Sites_noAU);rm(sites)
+```
+
+Now we need to attach **NEW** standards info by snapping.
+
+
+## Snap Stations to WQS
+
+Using the wokring copy of the snapFunction, we will snap unique stations with AUs to WQS. It is important to use conventionals because these will be the 'real' list of stations we need to assess each window. If we went from the stationsTable then we could miss stations if they were not in the previous cycle. 
+
+Eventually, after the assessors have updated stationsTable to include appropriate WQS, we could add a step that first joins unique stations from conventionals to last cycle's stationsTable to significantly reduce the number of stations we need to attach new WQS information to.
+
+For now, let's just work in the Roanoke Basin. We will also save some QA steps and only initially work with stations that connected to one geometry within a 10-50 meter buffer distance.
+
+```{r snapWQS}
+#snapList_AU_WQS <- snap_Points_to_Feature_List(BRRO_Sites_AU,'FDT_STA_ID',WQS, seq(10,50,by=10))
+#saveRDS(snapList_AU_WQS, 'workingDatasets/snapList_AU_WQS.RDS')
+snapList_AU_WQS <- readRDS('workingDatasets/snapList_AU_WQS.RDS')
+```
+
+Now time to filter out stuff that didn't connect to a WQS. THis list will have all AU and WQS info and be ready to go into app. Unfortunately, because assessors need to edit this list, I need to export it eventually as an excel file so they can use it. Maybe one day in the future I could keep as sf and speed up app processing.
+
+```{r final snapList}
+tooMany <- snapCheck(snapList_AU_WQS[['sf_output']])
+
+sites <- filter(snapList_AU_WQS[['sf_output']], !(`Point Unique Identifier` %in% tooMany$`Point Unique Identifier`)) %>%
+  st_set_geometry(NULL) %>%
+  mutate(FDT_STA_ID=`Point Unique Identifier`)
+
+
+BRRO_Sites_AU_WQS <- BRRO_Sites_AU %>%
+  right_join(sites, by = 'FDT_STA_ID') %>%
+  st_set_geometry(NULL)
+
+saveRDS(tooMany, 'data/tooManyWQSJames.RDS')
+write.csv(BRRO_Sites_AU_WQS, 'data/BRRO_Sites_AU_WQS.csv', row.names=FALSE)
+```
+
+
+
+# Benthics data needs ecoregion attached to unique StationID's
+
+```{r benthics ecoregion join}
+
+# Bring in Level 3 ecoregion
+library(sf)
+ecoregion <- st_read('data/VA_level3ecoregion.shp')
+
+# add ecoregion to conventionals info
+conventionals_sf <- conventionals_HUC %>%
+  distinct(FDT_STA_ID, .keep_all = T) %>%
+  st_as_sf( coords = c("Longitude", "Latitude"), 
+            remove = F, # don't remove these lat/lon cols from df
+            crs = 4326)  # add projection, needs to be geographic bc entering lat/lng
+
+# make sure everything will work
+identical(st_crs(conventionals_sf),st_crs(ecoregion))
+
+conventionals_sf <- st_join(conventionals_sf, 
+                           select(ecoregion, US_L3CODE, US_L3NAME), 
+                           join = st_intersects)
+
+saveRDS(conventionals_sf, 'data/conventionals_sf.RDS')
+saveRDS(conventionals_sf, 'R&S_app_v1/data/conventionals_sf.RDS')
+```
+

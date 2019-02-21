@@ -1,0 +1,245 @@
+---
+title: "2020 IR R&S Data Preprocessing"
+author: "Emma Jones"
+date: "December 14, 2018"
+output: html_document
+---
+
+Run in R 3.5.1
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sf)
+library(readxl)
+
+```
+
+This document walks users through the requisite data preprocessing steps for the 2020 IR Rivers and Streams Assessment decision support application. All initial steps are tested on 2018 IR data and thus need to be rerun for 2020 data when those datasets become available.
+
+## Input data
+
+#### Conventionals
+Bring in Roger's conventionals dataset.
+```{r conventionals2018}
+conventionals <- read_excel('workingDatasets/CONVENTIONALS_20171010.xlsx',sheet = 'CONVENTIONALS')
+glimpse(conventionals)
+```
+
+#### WQS
+Bring in updated WQS for New, Roanoke, and James basins. To get here, I took the updated basin files from each of their respective geodatabases, pulled out the riverine layer, exported to shapefile, and put in C:/updatedWQS directory for easy access.
+```{r WQS}
+#example:
+WQS <- st_read('C:/updatedWQS/updatedRoanoke.shp')
+glimpse(WQS)
+```
+
+
+#### Last Cycle's Station's Table 
+Bring in the previous stations table (draft still when writing this script) to help organize previous assessment decisions and assessment units.
+```{r stationsTable}
+stationsTable <- read_excel('workingDatasets/STREAMS_ir_mon_stations_20Nov2018.xlsx')
+glimpse(stationsTable)
+```
+
+
+## Data manipulation
+To speed application building, we subset data to just the BRRO region.
+
+```{r filterConventionals}
+conventionals <- filter(conventionals, FDT_STA_ID %in% stationsTable$STATION_ID)
+glimpse(conventionals)
+```
+
+So right now, conventionals already has the VAHU5 and VAHU6 designations, stationsTable already has previous ID305B designations and previous violation counts, and all we need to proceed (for field parameters and basic chemistry) is the appropriate WQS info attached to each StationID.
+
+## Snap Stations to WQS
+
+Using the wokring copy of the snapFunction, we will snap unique stations from conventionals to WQS. It is important to use conventionals because these will be the 'real' list of stations we need to assess each window. If we went from the stationsTable then we could miss stations if they were not in the previous cycle. 
+
+Eventually, after the assessors have updated stationsTable to include appropriate WQS, we could add a step that first joins unique stations from conventionals to last cycle's stationsTable to significantly reduce the number of stations we need to attach new WQS information to.
+
+For now, let's just work in the Roanoke Basin. We will also save some QA steps and only initially work with stations that connected to one geometry within a 10-50 meter buffer distance.
+
+```{r snapWQS}
+source('snapFunctions.R')
+
+BRRO_Sites_sf <- filter(conventionals, Basin == 'Roanoke River Basin') %>% # just Roanoke
+  distinct(FDT_STA_ID, .keep_all = TRUE) %>% # Just unique sites
+  select(FDT_STA_ID:FDT_SPG_CODE,STA_LV2_CODE:STA_CBP_NAME) %>% # drop sample data
+  st_as_sf(coords = c("Longitude", "Latitude"), 
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4269) %>% # add projection, needs to be geographic for now bc entering lat/lng, 
+  st_transform( st_crs(WQS)) # now change crs to Albers to make snapping work
+
+#snapList_BRRO <- snap_Points_to_Feature_List(BRRO_Sites_sf,'FDT_STA_ID',WQS, seq(10,50,by=10))
+#saveRDS(snapList_BRRO, 'workingDatasets/snapList_BRRO.RDS')
+snapList_BRRO <- readRDS('workingDatasets/snapList_BRRO.RDS')
+
+```
+
+Subset just the sites that connected to one segment.
+
+```{r oneSegmentDF}
+
+# function to find sites with +1 segment
+snapCheck <- function(successDataFrame){
+  successDataFrame %>%
+    group_by(`Point Unique Identifier`) %>%
+    filter(n()>1)
+}
+
+tooMany <- snapCheck(snapList_BRRO[['sf_output']])
+
+sites <- filter(snapList_BRRO[['sf_output']], !(`Point Unique Identifier` %in% tooMany$`Point Unique Identifier`))
+
+
+```
+
+Now join those few columns from conventionals that we want with VAHU info to make new StationTable dataset. Lose stream segment geometry bc it is not needed for the rest of app.
+
+```{r stationsTable new format}
+BRRO_Sites <- BRRO_Sites_sf %>%
+  st_set_geometry(NULL) 
+
+sites <- mutate(sites, FDT_STA_ID = `Point Unique Identifier`) %>%
+  left_join(BRRO_Sites, by = 'FDT_STA_ID') %>%
+  st_set_geometry(NULL) %>%
+  select(FDT_STA_ID, everything(), -c(`Point Unique Identifier`))
+
+snapList_sites <- filter(snapList_BRRO[['sf_output']], `Point Unique Identifier` %in% sites$FDT_STA_ID )  %>%
+  mutate(FDT_STA_ID = `Point Unique Identifier`) %>%
+  left_join(BRRO_Sites, by = 'FDT_STA_ID') %>%
+  select(FDT_STA_ID, everything(), -c(`Point Unique Identifier`))
+#saveRDS(sites,'workingDatasets/BRROsites_ROA.RDS')
+#saveRDS(snapList_sites,'workingDatasets/BRROsites_ROA_sf.RDS')
+snapList_sites <- readRDS('workingDatasets/BRROsites_ROA_sf.RDS')
+```
+
+
+Now attach appropriate AU's to each stationID that matched with WQS so we can have full picture of what needs assessed at each station.
+
+First, need to grab station table info (draft table form) from U:/305b2018/Stations_Database.accdb and export to csv to make it easy to bring into R. Be sure to grab both BRRO-R and BRRO-L working copies to smash into a single csv. 
+
+```{r smash xlsx}
+L <- read_excel('data/DRAFT_tbl_ir_mon_stations_BRRO_L.xlsx') 
+R <- read_excel('data/DRAFT_tbl_ir_mon_stations_BRRO_R.xlsx')
+
+# fix columns so they match
+needToAdd <- names(R)[!(names(R) %in% names(L))]
+needToAdd2 <- names(L)[!(names(L) %in% names(R))]
+L[needToAdd] <- NA
+R[needToAdd2] <- NA
+
+L2 <- L[,names(R)] 
+AU <- rbind(R,L2)
+
+#saveRDS(AU,'data/BRRO_AU.RDS')
+AU <- readRDS('data/BRRO_AU.RDS') %>%
+  mutate(FDT_STA_ID = STATION_ID)
+```
+
+Now connect spatial file to AU info.
+
+```{r AU attachment}
+snapList_sitesAU <- left_join(snapList_sites,AU, by='FDT_STA_ID') %>%
+  select(FDT_STA_ID:VAHU6,COMMENTS)
+#saveRDS(snapList_sitesAU,'data/snapList_sitesAU.RDS')
+```
+
+But becuse assessors need to update their AU's on the fly (in GIS at present), It is not a good idea to keep this AU data static between station table tool runs. It wouldbe really annoying to assess something, realize you need to change an AU, do so in GIS and ADB, then have to rerun the whole (or even part of) for each AU update. 
+
+So working theory now is that we want to have user upload their REGIONAL assessment unit shapefile that they have been making edits on in GIS and then throw that back to the app to keep moving on assessments. 
+
+Filter out just BRRO from **2016 AU RIVERINE** file. This will need to be updated statewide when we get 2018 IR AU's published.
+
+```{r AUfiltering shapefile}
+AU <- st_read('GIS/va_2016_aus_riverine_WGS84.shp')
+# Just get roanoke AU's for now, not even all BRRO
+
+AU_Roa <- filter(AU, ID305B %in% snapList_sitesAU$ID305B_1 | 
+                   ID305B %in% snapList_sitesAU$ID305B_2 | 
+                   ID305B %in% snapList_sitesAU$ID305B_3)
+st_write(AU_Roa, 'GIS/AU_Roa_WGS84.shp')
+```
+
+
+
+### VAHU6 Statewide by DEQ Region
+I need a dataset that neatly organizes all VAHUC6's by DEQ region and subsequent basins to call into app in non spatial form to speed app processing of the multiple selectize arguments.
+
+```{r VAHU6}
+assessmentLayer <- st_read('R&S_app_v1/GIS/AssessmentRegions_VA84.shp')
+conventionals <- read_excel('workingDatasets/CONVENTIONALS_20171010.xlsx',sheet = 'CONVENTIONALS')
+
+VAHU6 <- select(assessmentLayer,VAHU6,ASSESS_REG,VaName) %>%
+  st_set_geometry(NULL) %>%
+  distinct(VAHU6, .keep_all = TRUE)
+
+basin <- select(conventionals,Deq_Region,Basin,Huc6_Vahu5,Huc6_Vahu6)%>%
+  distinct(Huc6_Vahu6, .keep_all = TRUE) %>%
+  mutate(VAHU6=Huc6_Vahu6)
+
+
+basinByCode <- function(x){
+  z=NA
+  for(i in 1:length(x)){
+    if(x[i] == 'AO'){z[i] <- ('Ches. Bay and Small Coastal Basin')}
+  if(x[i] == 'AS'){z[i] <- ('Chowan and Dismal Swamp River Basin')}
+  if(x[i] == 'BS'){z[i] <- ('Tennessee and Big Sandy River Basin')}
+  if(x[i] == 'CB'){z[i] <- ('Ches. Bay and Small Coastal Basin')}
+  if(x[i] == 'CL'){z[i] <- ('Chowan and Dismal Swamp River Basin')}
+  if(x[i] == 'CM'){z[i] <- ('Chowan and Dismal Swamp River Basin')}
+  if(x[i] == 'CU'){z[i] <- ('Chowan and Dismal Swamp River Basin')}
+  if(x[i] == 'JA'){z[i] <- ('James River Basin')}
+  if(x[i] == 'JL'){z[i] <- ('James River Basin')}
+  if(x[i] == 'JM'){z[i] <- ('James River Basin')}
+  if(x[i] == 'JR'){z[i] <- ('James River Basin')}
+  if(x[i] == 'JU'){z[i] <- ('James River Basin')}
+  if(x[i] == 'NE'){z[i] <- ('New River Basin')}
+  if(x[i] == 'PL'){z[i] <- ('Potomac River Basin')}
+  if(x[i] == 'PS'){z[i] <- ('Shenandoah River Basin')}
+  if(x[i] == 'PU'){z[i] <- ('Shenandoah River Basin')}
+  if(x[i] == 'RA'){z[i] <- ('Rappahannock River Basin')}
+  if(x[i] == 'RD'){z[i] <- ('Roanoke River Basin')}
+  if(x[i] == 'RL'){z[i] <- ('Roanoke River Basin')}
+  if(x[i] == 'RU'){z[i] <- ('Roanoke River Basin')}
+  if(x[i] == 'TC'){z[i] <- ('Tennessee and Big Sandy River Basin')}
+  if(x[i] == 'TH'){z[i] <- ('Tennessee and Big Sandy River Basin')}
+  if(x[i] == 'TP'){z[i] <- ('Tennessee and Big Sandy River Basin')}
+  if(x[i] == 'YA'){z[i] <- ('Roanoke River Basin')}
+  if(x[i] == 'YO'){z[i] <- ('York River Basin')}
+  }
+  return(z)
+}
+
+regionFix <- function(x){
+  z=NA
+  for(i in 1:length(x)){
+    if(x[i] == 'BRRO'){z[i] <- ('Blue Ridge')}
+  if(x[i] == 'PRO'){z[i] <- ('Piedmont')}
+  if(x[i] == 'TRO'){z[i] <- ('Tidewater')}
+  if(x[i] == 'SWRO'){z[i] <- ('Southwest')}
+  if(x[i] == 'NRO'){z[i] <- ('Northern')}
+  if(x[i] == 'VRO'){z[i] <- ('Valley')}
+  if(x[i] == 'CO'){z[i] <- (NA)}
+  }
+  return(z)
+}
+
+VAHU61 <- left_join(VAHU6,basin, by='VAHU6') %>%
+  mutate(Basin_= as.character(substr(VAHU6,1,2)),
+         Basin1 = basinByCode(Basin_),
+         Deq_Region= regionFix(ASSESS_REG))%>%
+  mutate(Basin=Basin1) %>%
+  select(-c(Basin_,Basin1))
+
+VAHU62 <- select(VAHU61, VAHU6,Basin)%>%
+  distinct(VAHU6, .keep_all = TRUE)
+
+# now add basin info to assessment spatial layer
+assessmentLayer1 <- left_join(assessmentLayer, VAHU62, by = 'VAHU6')
+
+st_write(assessmentLayer1, 'R&S_app_v1/GIS/AssessmentRegions_VA84_basins.shp')
+```
+

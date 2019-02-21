@@ -1,0 +1,213 @@
+---
+title: "Preparing Data for Mary"
+author: "Emma Jones"
+date: "February 5, 2019"
+output: html_document
+---
+
+Run in R 3.5.1
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sf)
+library(readxl)
+library(shiny)
+library(mapview)
+library(leaflet)
+library(miniUI)
+
+source('snapFunctions.R') # snapping functions
+source('snapOrganizationFunctions.R') # functions to do stuff with snapping functions
+```
+
+This document walks users through the requisite data preprocessing steps for the 2020 IR Rivers and Streams Assessment decision support application. All initial steps are tested on 2016 and 2018 IR data and thus need to be rerun for 2020 data when those datasets become available.
+
+
+### Mary Version
+
+This document demonstrates the necessary steps to get (any) regional office up to speed with prerequisite data organization/processing steps to run the 2020 IR. This version works with BRRO data (WCRO and SCRO) to get Mary ready for assessing.
+
+## Input data
+
+#### Conventionals
+Bring in Roger's conventionals dataset. Make it a csv immediately to speed up rendering in app. This is the final data pull from Roger for the 2018 IR. As of today, the 2020 final IR pull is not available. **Subsitute 2020 data in when available.**
+
+```{r conventionals2018}
+#conventionals <- read_excel('workingDatasets/CONVENTIONALS_20171010.xlsx',sheet = 'CONVENTIONALS')
+#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%y %H:%M")
+#write.csv(conventionals, 'workingDatasets/CONVENTIONALS_20171010.csv', row.names=F)
+
+conventionals <- suppressWarnings(suppressMessages(read_csv('workingDatasets/CONVENTIONALS_20171010.csv')))
+#glimpse(conventionals)
+```
+
+We want to work with just one regional office at a time. This script is preprogrammed for BRRO. Originally, we filtered conventionals by the Deq_Region field, but found that those entries do not track accurately with assessment requirements. Additionally, the STA_REC_CODE field does not indicate which regional office is meant to assess the station. For now, the safest way to find the conventionals data that should be assessed by each regional office is to do a spatial subset using the Assessment Regions UPDATED shapefile. This version of the file reflects the changes to BRRO and PRO when SCRO dissolved.
+
+```{r BRROconventionals}
+filter(conventionals, Deq_Region == 'Blue Ridge') %>%
+  distinct(Basin)
+```
+
+Chowan is not in BRRO...
+
+Before we can do any spatial work, we need to make a dataset of all UNIQUE StationID's for the regional offices to work with. 
+
+```{r conventionalsDistinct}
+
+conventionals_D <- distinct(conventionals, FDT_STA_ID, .keep_all = T) %>%
+  select(FDT_STA_ID:FDT_SPG_CODE, STA_LV2_CODE:STA_CBP_NAME)# drop data to avoid any confusion
+rm(conventionals) # remove full conventionals dataset to save memory
+```
+
+
+#### Statewide Assessment Layer
+
+Because we cannot trust the Deq_Region or STA_REC_CODE columns from conventionals to give us the stations each region needs to assess, we must do a spatial subset of all unique stations in an IR window (conventionals_D) by the Statewide Assessment Layer (filtered to our specified assessment region, BRRO).
+
+Bring in Statewide Assessment Layer. Choose which region you want to assess (BRRO).
+
+```{r Statewide Assessment Layer}
+assessmentLayer <- st_read('GIS/AssessmentRegions_VA84_basins.shp') %>%
+  st_transform( st_crs(4326)) %>% # transform to WQS84 for spatial intersection
+  filter(ASSESS_REG == 'BRRO') # only keep BRRO VAHU6 watersheds
+```
+
+Turn the unique conventionals sites into a spatial format (sf object note the geometry field, which is really a list column of spatial information).
+
+```{r sf conventionals_D}
+conventionals_D <-st_as_sf(conventionals_D, 
+                           coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+                           remove = F, # don't remove these lat/lon cols from df
+                           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng, 
+```
+
+
+Now filter the distinct sites from conventionals (statewide) to just sites in the region of interest (BRRO).
+
+```{r}
+conventionals_D_Region <- st_join(conventionals_D, assessmentLayer, join = st_intersects) %>%
+  filter(!is.na(VAHU6)) %>% # only keep rows that joined
+  mutate(sameVAHU6 = ifelse(VAHU6 == Huc6_Vahu6, T, F)) %>% # double check the VAHU6 watershed matches from CEDS to actual spatial layer
+  dplyr::select(FDT_STA_ID:STA_CBP_NAME, VAHU6, sameVAHU6) %>% # just get columns we are interested in
+  rename('Basin' =  'Basin.x') # rename column to original name pre join
+```
+
+Are there any sites that may be mislabeled in CEDS for VAHU6? Anything that pops up here should be investigated.
+```{r VAHU6 issues}
+filter(conventionals_D_Region, sameVAHU6== FALSE)
+```
+
+Final manipulation steps to make the conventionals_D_Region ready to roll. This script is keeping the original (CEDS) VAHU6 designation instead of the spatial join VAHU6.
+
+```{r conventionals_D_Region}
+conventionals_D_Region <- dplyr::select(conventionals_D_Region, FDT_STA_ID:STA_CBP_NAME) %>% # get rid of the extra VAHU6 columns
+  st_set_geometry(NULL) # take away spatial aspect (for now)
+rm(assessmentLayer); rm(conventionals_D) # dont need these taking up memory anymore
+```
+
+
+#### Last Cycle's Stations Table
+
+This is a draft from Mary right now, but everything should be in there (Stations and ID305B's). Keep determinations for now even though they are draft.
+
+**There are duplicated rows in this dataset that royally F things up. I have filtered them out for now. Not sure if correct.**
+
+```{r stationTable}
+stationTable <- read_excel('data/Emma_Stations2018IR_Draft_Dec.xlsx')
+
+stationTable1 <- stationTable %>%
+  group_by(STATION_ID) %>%
+  mutate(extra= n()) %>%
+  select(STATION_ID, extra, everything())
+
+stationTable2 <- distinct(stationTable, STATION_ID, ID305B_1, ID305B_2, ID305B_3, .keep_all = T)%>%
+  group_by(STATION_ID) %>%
+  mutate(extra= n()) %>%
+  select(STATION_ID, extra, everything()) %>% # still extras so just take distinct STATION_ID 
+  distinct(STATION_ID,.keep_all = T) %>%
+  select(-extra)
+rm(stationTable1)
+```
+
+
+#### Regional Assessment Spatial Layer From Last Cycle (stream lines)
+
+This is the spatial (line) file from the last cycle. If a station did not join to an AU by name from the last cycle, meaning said station was not in the last cycle's station table, then we are using the last cycle's spatial file as a starting point for figuring out where that station should be linked assessment-wise. Since 2018 isn't published yet, working from 2016 final layer. 
+
+```{r Assessment Unit shapefile}
+AUs <- st_read('GIS/va_2016_aus_riverine_WGS84.shp') %>%
+  st_transform(crs = 102003) # convert to Albers Equal Area just for snapping
+```
+
+
+
+## Data Organization Step 1: Get AU's from previous cycle for conventionals data.
+
+This step uses last cycle's ID305B columns and joins that information to the conventionals StationID's. This is where all assessments should start. This information **COULD** change if an AU is split through this assessment cycle's assessment process. That is why we are ultimately returning the final processed dataset to the assessor in a flat file so they can make any manual adjustments.
+
+
+Now use function that will take in unique stations from conventionals (filtered to a specific region) as just a table, the AU shapefile from previous window, and the last cycle's stations table. The function will find which sites dont have AU info when joined with last cycle's stations table and will snap to it and give users choice where too many chosen and iwll return everything regardless of AU connection or not ot be used in WQS snapping step. 
+
+```{r AU organization and snap function}
+# function inputs
+#Regional_Sites <- conventionals_D_Region[1:40,]
+#previousCycleAU <- AUs
+#previousCycleStationTable <- stationTable2 # currently using stationTable2 bc duplicate rows deleted
+#bufferDistances <- seq(10,80,by=10)
+
+
+#BRRO_Sites_AU <- snapAndOrganizeAU(conventionals_D_Region[1:80,], AUs, stationTable2, seq(10,80,by=10))
+```
+
+
+So now we have a sf object named BRRO_Sites_AU that has the same n rows as original data (filter conventionals for unique sites within given regional office) and most of the AU information noted. I have not filtered out the sites that need handsy AU selection bc I still want to snap to WQS before spitting out to user.
+
+
+## Get WQS info
+
+Moving on with just sites that have AU information (see note above why) I need to use snapbuffermethod again to join with WQS. 
+
+```{r clean up workspace}
+rm(list=setdiff(ls(), c("BRRO_Sites","BRRO_Sites_AU","BRRO_Sites_needVeryManualAU",'conventionals_D',
+                        "stationTable","stationTable2",
+                        "snap_bufferMethod","snap_Point_to_Feature","snap_Points_to_Feature_List","snapCheck",
+                        'AUselecter',
+                        'basinNameSwitcher', 'snapAndOrganizeAU', 'snapAndOrganizeWQS',
+                        'snapCheck','WQSselecter')))
+```
+
+Now work through each unique basin in Regional office one at a time by snapping to WQS, making user choose WQS when too many snapped in buffer, and spit out answer with sites that have WQS and without.
+
+```{r snapWQS for whole region}
+# function Inputs
+AUsnappedSites <- BRRO_Sites_AU # ALL sites as sf object, regardless of AU connection or not
+#WQSfileLocation <- 'C:/updatedWQS/' # file location of WQS shapefiles
+#basinName <- basinNameSwitcher("James River Basin") #basinNameSwitcher(unique(AUsnappedSites$Basin)[i])
+#bufferDistances <- seq(10,80,by=10) # note this went up to 80
+
+regionalOutput <- list()
+# Loop through multiple basins
+for (i in 1:length(unique(AUsnappedSites$Basin))){
+  Regional_Sites_AU_basin <- filter(AUsnappedSites, Basin %in% unique(AUsnappedSites$Basin)[i] )
+  #WQSsnaps <- snapAndOrganizeWQS(Regional_Sites_AU_basin[1:3,], 'C:/updatedWQS/', 
+  WQSsnaps <- snapAndOrganizeWQS(Regional_Sites_AU_basin, 'C:/updatedWQS/', 
+                                 basinNameSwitcher(unique(AUsnappedSites$Basin)[i]),  seq(10,80,by=10))
+  regionalOutput[[i]] <- WQSsnaps
+}
+
+# smash it all back together
+RegionalResults <- do.call("rbind", lapply(regionalOutput, data.frame))
+
+# Sites ready for app
+RegionalResults_AU_WQS <- filter(RegionalResults, !is.na(ID305B_1) & !is.na(OBJECTID))
+write.csv(RegionalResults_AU_WQS,'RegionalResults_AU_WQS.csv',row.names = F)
+
+
+# Stations missing either WQS or AU information that needs attention
+RegionalResults_missing_AU_WQS <- filter(RegionalResults, is.na(ID305B_1) | is.na(OBJECTID))
+write.csv(RegionalResults_missing_AU_WQS,'RegionalResults_missing_AU_WQS.csv',row.names = F) 
+
+```
+
+
