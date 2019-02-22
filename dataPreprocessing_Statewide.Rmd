@@ -424,5 +424,39 @@ write.csv(conventionals_D_Region_Estuary, paste('processedStationData/EstuarineS
 ```
 
 
+## Split out riverine vs lake stations for assessment apps
+
+Once you fix any stations that are missing AU or WQS information, you can read the entire dataset back to this script and have the program split the station tables into stations that will be analyzed by the lake assessment app and those that will be assessed by the rivers and streams assessment app. Packages and necessary datasets are reloaded in case you are not completing this step in the same session as the previous AU/WQS assignment session. 
+
+** Minimal user input: if the file or file location you want to upload differs from the example given, you will need to update it to work with your configuration. **
+
+
+```{r splitRiversAndLakes, echo=F}
+#reload libraries in case you are starting from this point
+library(tidyverse)
+library(sf)
+
+# Bring back in lake AUs from last cycle to filter input table
+reservoirAUs <- st_read('GIS/draft2018IR_AUs/va_2018_aus_reservoir.shp') %>%
+   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+# This is the station table you have edited including all riverine and lake stations with all necessary AU and WQS information fixed for your region.
+RegionalResultsCombinedAll <- read_csv('processedStationData/RegionalResultsCombined_BRRO_final.csv')
+
+# Find all stations that have lake AUs
+lakeStations <- filter(RegionalResultsCombinedAll, ID305B_1 %in% unique(reservoirAUs$ID305B) |
+                         ID305B_2 %in% unique(reservoirAUs$ID305B) |
+                         ID305B_3 %in% unique(reservoirAUs$ID305B))
+
+# Make the rest riverine
+riverStations <- filter(RegionalResultsCombinedAll, !(FDT_STA_ID %in% lakeStations)) 
+
+# Save both for app use
+write.csv(lakeStations, paste('processedStationData/RegionalResultsLake_',
+                                         unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+write.csv(riverStations, paste('processedStationData/RegionalResultsRiverine_',
+                                         unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+```
 
 
