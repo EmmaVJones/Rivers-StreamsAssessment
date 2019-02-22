@@ -350,15 +350,7 @@ rm(reservoirWQS);rm(reservoirAUs); rm(reservoirStations) # clean up workspace
 All stations that did not attach to a lake AU will be run below as a stream site. This stream WQS snapping tool behaves the same way as the AU snapping tool; however, we are bringing in basins for snapping one at a time because the WQS files are so large. The tool will handle the organization and snapping by basin. You are only responsible for using the gadget that pops up in the Viewer panel when each basin prompts you. You can see the progress below the chunk. This is the most computationally heavy part of the process.
 
 
-
 ```{r attachStreamWQS, echo=F}
-#AUsnappedSites <- riverineStationsWQS
-#WQSfileLocation <- 'GIS/updatedWQS/'
-#basinName
-#bufferDistances <- seq(10,80,by=10)
-  
-  
-  
 regionalOutput <- list()
 # Loop through multiple basins
 for (i in 1:length(unique(riverineStationsWQS$Basin))){
@@ -368,20 +360,68 @@ for (i in 1:length(unique(riverineStationsWQS$Basin))){
   regionalOutput[[i]] <- WQSsnaps
 }
 
-# smash it all back together
+# smash it all back together, change from lists to single dataframe
 RegionalResults <- do.call("rbind", lapply(regionalOutput, data.frame))
-
+#View(RegionalResults)
+rm(WQSsnaps)# clean up workspace
 ```
 
-Need to make reservoirStationsWQS match the WQS format for rivers
+Below is the table of riverine stations without WQS information attached. These will be returned to the user with a full list of stations that need individual attention. 
+
+```{r RegionalResults table, echo=F}
+RegionalResultsNoWQS <- filter(RegionalResults, is.na(OBJECTID))
+
+DT::datatable(RegionalResultsNoWQS, escape=F, rownames = F, options = list(scrollX = TRUE))
+```
+
+Lastly, we need to combine the lake and stream stations into a single dataframe. After we combine we will separate out the stations that need either AU or WQS manual entry. We suggest using GIS to find this information. 
+
+```{r combine WQS, echo=F}
+# Reorder columns in reservoirStationsWQS to match RegionalResults to allow row binding
+reservoirStationsWQS <- mutate(reservoirStationsWQS, Point.Unique.Identifier=NA, Buffer.Distance=NA, StreamType=NA) %>%
+  select(FDT_STA_ID:COMMENTS, Point.Unique.Identifier, Buffer.Distance, OBJECTID:FCode, BASIN, WQS_COMMEN, 
+         WATER_NAME, SEC, CLASS, SPSTDS, SECTION_DE, Basin_Code, PWS, Trout, Edit_Date, StreamType, 
+         Tier_III, Backlog, Shape_Leng)%>%
+  st_set_geometry(NULL)
+
+RegionalResultsCombined <- rbind(RegionalResults,reservoirStationsWQS)
+#View(RegionalResultsCombined)
+```
 
 
+This next chunk walks users through saving all the results. The results are saved to a default folder created in this directory called processedStationData. You can find the datasets you need to manually update before entering into the app there. Again, AU and WQS information as formatted by the above code is required for all sites you wish to analyze within the assessment apps. Failure to upload stations in the correct format ensures the app with either break or fail to analyze your data. It is advised that you fix the stations in the RegionalResultsCombined_REGIONCODE.csv. Other spreadsheets and shapefiles of stations missing information are provided for you to use in GIS to make corrections in the RegionalResultsComnined.csv.
+
+```{r saveResults, echo=FALSE}
+# This table has all unique stations within the selected region, regardless of AU or WQS connections.
+write.csv(RegionalResultsCombined, paste('processedStationData/RegionalResultsCombined_',
+                                         unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+
+# This table and shapefile highlights the stations that need AU information prior to use in assessment apps
+RegionalResultsCombined_NoAU <- filter(RegionalResultsCombined, is.na(ID305B_1))
+write.csv(RegionalResultsCombined_NoAU, paste('processedStationData/RegionalResultsCombined_NoAU_',
+                                              unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+RegionalResultsCombined_NoAU_sf <- RegionalResultsCombined_NoAU %>%
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
+st_write(RegionalResultsCombined_NoAU_sf, paste('processedStationData/RegionalResultsCombined_NoAU_',
+         unique(assessmentLayerSelection$ASSESS_REG),'.shp',sep=''))
+
+# This table and shapefile highlights the stations that need WQS information prior to use in assessment apps
+RegionalResultsCombined_NoWQS <- filter(RegionalResultsCombined, is.na(OBJECTID))
+write.csv(RegionalResultsCombined_NoWQS, paste('processedStationData/RegionalResultsCombined_NoWQS_',
+                                              unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+RegionalResultsCombined_NoWQS_sf <- RegionalResultsCombined_NoWQS %>%
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
+st_write(RegionalResultsCombined_NoWQS_sf, paste('processedStationData/RegionalResultsCombined_NoWQS_',
+         unique(assessmentLayerSelection$ASSESS_REG),'.shp',sep=''))
 
 
-
-
-
-
+# This table has all Estuary sites for your reference. None of the available assessment apps currently handle estuarine assessments
+write.csv(conventionals_D_Region_Estuary, paste('processedStationData/EstuarineSites_',unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+```
 
 
 
