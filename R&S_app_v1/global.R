@@ -118,20 +118,29 @@ StationTableStartingData <- function(x){
 
 #dataFrame <-ammonia
 #dateTimeColumn <- 'FDT_DATE_TIME2'
-lastXyears <- function(dataFrame, dateTimeColumn, nYears){
+lastXyears <- function(dataFrame, dateTimeColumn, nYears, consecutive){ # not bombproof but works for nYears=3
   uniqueYears <- dplyr::select(dataFrame, dateTimeColumn) %>% 
     mutate(sampleYear = lubridate::year(get(dateTimeColumn))) %>% 
     distinct(sampleYear) %>% 
     dplyr::pull()
-  
+  #uniqueYears <- c(2011, 2012, 2013, 2014, 2015, 2018)
+  #uniqueYears <- c(2013, 2014, 2015, 2017)
+  #uniqueYears <- c(2013, 2014, 2015, 2017, 2018)
   nYearsConversion <- nYears-1
   
   if(length(uniqueYears) > nYearsConversion){
-    sort(uniqueYears)[(length(uniqueYears)-nYearsConversion):length(uniqueYears)]
-  } else { sort(uniqueYears)}
+    years <- sort(uniqueYears)[(length(uniqueYears)-nYearsConversion):length(uniqueYears)]
+  } else { 
+    years <- sort(uniqueYears)}
   
+  if(consecutive == TRUE){
+    recent <- years[which(years > max(years)-nYears)]
+    return(recent)
+    
+  } else {return(years)}
 }
-#lastXyears(dataFrame, dateTimeColumn, 7)
+
+#lastXyears(dataFrame, dateTimeColumn, 7, TRUE)
 
 
 
@@ -334,7 +343,7 @@ acuteNH3exceedance <- function(x){
     ammonia <- acuteNH3limit(x) %>%
       filter(!is.na(AMMONIA)) %>% #get rid of NA's
       mutate(sampleYear = lubridate::year(FDT_DATE_TIME2)) # add year to enable filtering by last 3 years with data
-    last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3)
+    last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3, TRUE)
     ammonia <- filter(ammonia, sampleYear %in% last3years) %>%
       select(-sampleYear) %>%
       rename(parameter = !!names(.[4]), limit = !!names(.[5])) %>% # rename columns to make functions easier to apply

@@ -40,7 +40,7 @@ AmmoniaPlotlySingleStation <- function(input,output,session, AUdata, stationSele
     dat$SampleDate <- as.POSIXct(as.POSIXct(dat$FDT_DATE_TIME2, format="%m/%d/%Y %H:%M"), format="%m/%d/%y")
     
     last3years <- mutate(dat, sampleYear = lubridate::year(SampleDate)) %>%
-      filter(sampleYear %in% lastXyears(dat, 'SampleDate', 3))
+      filter(sampleYear %in% lastXyears(dat, 'SampleDate', 3, TRUE))
     box1 <- data.frame(SampleDate = c(min(last3years$FDT_DATE_TIME2), min(last3years$FDT_DATE_TIME2),
                                       max(last3years$FDT_DATE_TIME2),max(last3years$FDT_DATE_TIME2)), 
                        y = c(min(dat$AMMONIA), max(dat$AMMONIA), max(dat$AMMONIA), min(dat$AMMONIA)))
