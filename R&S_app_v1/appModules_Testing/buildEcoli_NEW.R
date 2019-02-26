@@ -15,7 +15,7 @@ x <-filter(AUData, FDT_STA_ID %in% '2-JMS279.41')#'2-JMS282.28')
 quickStats <- function(parameterDataset, parameter){
   results <- data.frame(SAMP = nrow(parameterDataset),
                         VIO = nrow(filter(parameterDataset, exceeds == TRUE))) %>%
-    mutate(exceedanceRate = (VIO/SAMP)*100)
+    mutate(exceedanceRate = format((VIO/SAMP)*100,digits=3))
   
   if(results$exceedanceRate > 10.5 & results$SAMP > 10){outcome <- 'Review'}
   if(results$exceedanceRate < 10.5 & results$SAMP > 10){outcome <- 'S'}

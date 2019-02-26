@@ -1,4 +1,3 @@
-
 AmmoniaPlotlySingleStationUI <- function(id){
   ns <- NS(id)
   tagList(
@@ -10,11 +9,10 @@ AmmoniaPlotlySingleStationUI <- function(id){
       fluidRow(
         column(8, h5('All ammonia records that are above the criteria for the ',span(strong('selected site')),' are highlighted below.'),
                div(style = 'height:150px;overflow-y: scroll', tableOutput(ns('AmmoniaRangeTableSingleSite')))),
-        column(4, h5('Individual ammonia exceedance statistics for the ',span(strong('selected site')),' are highlighted below.',span(strong('Note: the ammonia
-                                                                                                                                             samples from the last consecutive three years of data collected are the only samples utilized for exceedance calculations.'))),
+        column(4, h5('Individual ammonia exceedance statistics for the ',span(strong('selected site')),' are highlighted below.'),
                tableOutput(ns("stationAmmoniaExceedanceRate"))))
-        )
-      )
+    )
+  )
 }
 
 
@@ -37,20 +35,9 @@ AmmoniaPlotlySingleStation <- function(input,output,session, AUdata, stationSele
     dat <- acuteNH3limit(Ammonia_oneStation()) %>%
       filter(!is.na(AMMONIA)) %>%
       mutate(over=ifelse(AMMONIA > NH3limit, '#D11814', '#535559'))# 'VIOLATION', 'GOOD'))
-    dat$SampleDate <- as.POSIXct(as.POSIXct(dat$FDT_DATE_TIME2, format="%m/%d/%Y %H:%M"), format="%m/%d/%y")
+    dat$SampleDate <- as.POSIXct(as.POSIXct(dat$FDT_DATE_TIME, format="%m/%d/%Y %H:%M"), format="%m/%d/%y")
     
-    last3years <- mutate(dat, sampleYear = lubridate::year(SampleDate)) %>%
-      filter(sampleYear %in% lastXyears(dat, 'SampleDate', 3, TRUE))
-    box1 <- data.frame(SampleDate = c(min(last3years$FDT_DATE_TIME2), min(last3years$FDT_DATE_TIME2),
-                                      max(last3years$FDT_DATE_TIME2),max(last3years$FDT_DATE_TIME2)), 
-                       y = c(min(dat$AMMONIA), max(dat$AMMONIA), max(dat$AMMONIA), min(dat$AMMONIA)))
-    
-    
-    if(nrow(dat) > 0){ 
-      plot_ly(data=dat)%>%
-        add_polygons(x = ~SampleDate, y = ~y, data = box1, fillcolor = "#B0B3B7",opacity=0.6, line = list(width = 0),
-                     hoverinfo="text", name =paste('Most recent three years of data in assessment window')) %>%
-        
+    plot_ly(data=dat)%>%
         add_markers(data=dat, x= ~SampleDate, y= ~AMMONIA,mode = 'scatter', name="Ammonia (mg/L as N)",marker = list(color= ~over),#'#535559'),
                     hoverinfo="text",text=~paste(sep="<br>",
                                                  paste("Date: ",SampleDate),
@@ -61,11 +48,8 @@ AmmoniaPlotlySingleStation <- function(input,output,session, AUdata, stationSele
         layout(showlegend=FALSE,
                yaxis=list(title="Ammonia (mg/L as N)"),
                xaxis=list(title="Sample Date",tickfont = list(size = 10)))
-    }
     
   })
-  
-  
   
   output$AmmoniaRangeTableSingleSite <- renderTable({
     req(Ammonia_oneStation())
@@ -79,7 +63,4 @@ AmmoniaPlotlySingleStation <- function(input,output,session, AUdata, stationSele
       dplyr::select(1:3) %>%# don't give assessment determination for single station
       dplyr::rename(nSamples = AcuteAmmonia_SAMP,nExceedance= AcuteAmmonia_VIO,exceedanceRate= AcuteAmmonia_exceedanceRate)}) # make it match everything else
   
-  
 }
-
-

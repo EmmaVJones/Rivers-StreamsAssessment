@@ -10,8 +10,8 @@ Run in R 3.5.2
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 suppressPackageStartupMessages(library(tidyverse))
-suppressPackageStartupMessages(library(sf))
 suppressPackageStartupMessages(library(readxl))
+suppressPackageStartupMessages(library(sf))
 suppressPackageStartupMessages(library(shiny))
 suppressPackageStartupMessages(library(mapview))
 suppressPackageStartupMessages(library(leaflet))
@@ -29,14 +29,17 @@ This document demonstrates the necessary steps to get any regional office up to 
 ## Input data
 
 #### Conventionals
-Bring in Roger's conventionals dataset. Make it a csv immediately to speed up rendering in app. This is the final data pull from Roger for the 2018 IR. As of today, the 2020 final IR pull is not available. **Subsitute 2020 data in when available.**
+Bring in Roger's conventionals dataset. Make it a csv immediately to speed up rendering in app. This is the draft 2020 IR data pull. This entire document will need to be rerun with the finalized 2020 IR dataset.
 
-```{r conventionals2018, echo=F}
-#conventionals <- read_excel('workingDatasets/CONVENTIONALS_20171010.xlsx',sheet = 'CONVENTIONALS')
-#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%y %H:%M")
-#write.csv(conventionals, 'workingDatasets/CONVENTIONALS_20171010.csv', row.names=F)
+The conventionals dataset was first converted to a .csv in excel because my system struggled to read in entire dataset in .xlsx format.
 
-conventionals <- suppressWarnings(suppressMessages(read_csv('workingDatasets/CONVENTIONALS_20171010.csv')))
+```{r conventionals2020, echo=F}
+# too big to read in using read_excel
+#conventionals <- read_excel('data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.xlsx',sheet = 'CONVENTIONALS')
+conventionals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.csv') %>%
+  filter(!is.na(Latitude)|!is.na(Longitude)) # remove sites without coordinates
+conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M") # turn character date format into proper date time format
+
 #View(conventionals) # to look at dataset use this command
 ```
 
@@ -44,7 +47,7 @@ Before we can do any spatial subsetting work, we need to make a dataset of all U
 
 ```{r conventionalsDistinct, echo=FALSE}
 conventionals_D <- distinct(conventionals, FDT_STA_ID, .keep_all = T) %>%
-  select(FDT_STA_ID:FDT_SPG_CODE, STA_LV2_CODE:STA_CBP_NAME) %>%# drop data to avoid any confusion
+  select(FDT_STA_ID:FDT_SPG_CODE, Latitude:STA_CBP_NAME) %>%# drop data to avoid any confusion
   st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
            remove = F, # don't remove these lat/lon cols from df
            crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng, 
@@ -94,9 +97,8 @@ Now we can subset unique conventionals sites that fall into the assessment regio
 conventionals_D_Region <- st_join(conventionals_D, assessmentLayerSelection, join = st_intersects) %>%
   filter(!is.na(VAHU6)) %>% # only keep rows that joined
   mutate(sameVAHU6 = ifelse(VAHU6 == Huc6_Vahu6, T, F)) %>% # double check the VAHU6 watershed matches from CEDS to actual spatial layer
-  dplyr::select(FDT_STA_ID:STA_CBP_NAME, VAHU6, sameVAHU6) %>% # just get columns we are interested in
-  rename('Basin' =  'Basin.x') %>% # rename column to original name pre join
-  dplyr::select(FDT_STA_ID:STA_CBP_NAME) # get rid of the extra VAHU6 columns
+  dplyr::select(FDT_STA_ID:STA_CBP_NAME, Basin, VAHU6, sameVAHU6) %>% # just get columns we are interested in, compare here if desired
+  dplyr::select(FDT_STA_ID:STA_CBP_NAME,Basin) # get rid of the extra VAHU6 columns
 
 rm(conventionals_D); rm(assessmentLayer) # clean up workspace
 
@@ -121,7 +123,7 @@ The below chunk:
 3) Removes any estuarine sites from the data frame of unique conventionals sites that need AU and WQS information.
 
 ```{r Filter Out Estuary Statewide, echo=F, results = 'hide'}
-estuaryAUs <- st_read('GIS/draft2018IR_AUs/va_2018_aus_estuarine.shp') %>%
+estuaryAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_estuarine.shp') %>%
    st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 
@@ -240,7 +242,7 @@ cat(paste('Working with the ', nrow(conventionals_D_Region_NoAU),' sites that di
 ```
 
 ```{r reservoirStatewide, echo=F, results = 'hide'}
-reservoirAUs <- st_read('GIS/draft2018IR_AUs/va_2018_aus_reservoir.shp') %>%
+reservoirAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_reservoir.shp') %>%
    st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 # find lake AUs, if Any
@@ -273,7 +275,7 @@ The next chunk will bring in the riverine AU layer from the previous cycle, comp
 
 ```{r riverineAUsnap, echo=FALSE}
 # use a custom snapping tool to snap and organize 
-riverineAUs <-  st_read('GIS/draft2018IR_AUs/va_2018_aus_riverine.shp') %>%
+riverineAUs <-  st_read('GIS/draft2018_spatialData/va_2018_aus_riverine.shp') %>%
   st_transform(crs = 102003)  # transform to Albers for spatial intersection
 
 Regional_Sites_AU <- snapAndOrganizeAU(conventionals_D_Region_NoAU, riverineAUs,  bufferDistances = seq(10,50,by=10))
@@ -322,7 +324,7 @@ We will bring in the updated WQS reservoir layer, to attach to stations that are
 
 ```{r find Lacustrine AUs, echo=F}
 # Bring reservoir AUs back in just for ID305B options
-reservoirAUs <- as.character(st_read('GIS/draft2018IR_AUs/va_2018_aus_reservoir.shp')$ID305B)
+reservoirAUs <- as.character(st_read('GIS/draft2018_spatialData/va_2018_aus_reservoir.shp')$ID305B)
 
 # Separate lake stations from stream stations
 reservoirStations <- filter(conventionals_D_Region_AU, ID305B_1 %in% unique(reservoirAUs) |
@@ -456,8 +458,46 @@ write.csv(lakeStations, paste('processedStationData/RegionalResultsLake_',
                                          unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
 write.csv(riverStations, paste('processedStationData/RegionalResultsRiverine_',
                                          unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+
 ```
 
+Before we can run the riverine app, we need to attach correct Ecoregion information. Benthics data needs ecoregion attached to unique sites to determine SCI to use.
+
+```{r benthics ecoregion join}
+
+# Bring back in original Conventionals data
+conventionals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.csv') %>%
+  filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
+  rename('DO' = "DO_mg/L", "NITROGEN" = "NITROGEN_mg/L",  "AMMONIA" = "AMMONIA_mg/L" ,
+       #"NH3_DISS" = , "NH3_TOTAL"  , 
+       "PHOSPHORUS"= "PHOSPHORUS_mg/L" , "FECAL_COLI" = 'STORET_31616', "E.COLI" = 'ECOLI_CFU/100mL', 
+       "ENTEROCOCCI" = 'STORET_31649', "CHLOROPHYLL" = 'STORET_32211', "SSC" = "STORET_SSC-TOTAL" , 
+       "SSC_RMK" = "RMK_SSC-TOTAL" , "NITRATE" = "NITRATE_mg/L",  "CHLORIDE" = "CHLORIDE_mg/L" , 
+       "SULFATE_TOTAL" = "SULFATE_mg/L",   "SULFATE_DISS" = 'STORET_00946')
+conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
+
+
+# Bring in Level 3 ecoregion
+library(sf)
+ecoregion <- st_read('GIS/VA_level3ecoregion.shp')
+
+# add ecoregion to conventionals info
+conventionals_sf <- conventionals %>%
+  distinct(FDT_STA_ID, .keep_all = T) %>%
+  st_as_sf( coords = c("Longitude", "Latitude"), 
+            remove = F, # don't remove these lat/lon cols from df
+            crs = 4326)  # add projection, needs to be geographic bc entering lat/lng
+
+# make sure everything will work
+identical(st_crs(conventionals_sf),st_crs(ecoregion))
+
+conventionals_sf <- st_join(conventionals_sf, 
+                           select(ecoregion, US_L3CODE, US_L3NAME), 
+                           join = st_intersects)
+
+saveRDS(conventionals_sf, 'data/conventionals_sf_draft2020.RDS')
+saveRDS(conventionals_sf, 'R&S_app_v1/data/conventionals_sf_draft2020.RDS')
+```
 
 
 Contact Emma Jones (emma.jones@deq.virginia.gov) if you have any questions about this script.

@@ -213,8 +213,14 @@ BenthicsPlotlySingleStation <- function(input,output,session, AUdata, stationSel
   
   output$rawBenthicsData <- DT::renderDataTable({
     req(ns(input$Benthics_oneStationSelection), Benthics_oneStation())
-    DT::datatable(as.tibble(Benthics_oneStation()$data), escape=F, rownames = F,
-                  options= list(dom= 't' , scrollX = TRUE, pageLength = nrow(Benthics_oneStation()$data), scrollY = "300px")) 
+    z <- as.tibble(Benthics_oneStation()$data)
+    z$CollDate <- as.character(z$CollDate)
+    print(str(z))
+    DT::datatable(z, escape=F, rownames = F,
+                  options= list(dom= 't' , scrollX = TRUE, pageLength = nrow(Benthics_oneStation()$data), scrollY = "300px"))%>%
+      formatRound(columns=c("%Ephem", "%PT - Hydropsychidae", "Fam%Scrap", "%Chiro",  "Fam%2Dom", "FamHBI", "%Ephem Score", 
+                            "%PT-H Score",  "Fam Richness Score",  "%Chironomidae Score", "Fam EPT Score", "Fam %Scraper Score",
+                            "Fam %2Dom Score", "Fam %MFBI Score" , "Fam SCI" ), digits=1) 
   })
   
 }

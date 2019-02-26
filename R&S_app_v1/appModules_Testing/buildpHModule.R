@@ -72,9 +72,9 @@ pHPlotlySingleStation <- function(input,output,session, AUdata){
                    hoverinfo="text", name =paste('Medium Probability of Stress to Aquatic Life')) %>%
       
       add_lines(data=dat, x=~SampleDate,y=~top, mode='line',line = list(color = 'black'),
-                hoverinfo = "none", name="pH Standard") %>%
+                hoverinfo = "text",text="pH Standard",  name="pH Standard") %>%
       add_lines(data=dat, x=~SampleDate,y=~bottom, mode='line',line = list(color = 'black'),
-                hoverinfo = "none", name="pH Standard") %>%
+                hoverinfo = "text", text="pH Standard", name="pH Standard") %>%
       add_markers(data=dat, x= ~SampleDate, y= ~FDT_FIELD_PH,mode = 'scatter', name="pH (unitless)",  marker = list(color= '#535559'),
                   hoverinfo="text",text=~paste(sep="<br>",
                                                paste("Date: ",SampleDate),

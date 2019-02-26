@@ -125,7 +125,7 @@ DOPlotlySingleStation <- function(input,output,session, AUdata){
       add_polygons(data = box4, x = ~x, y = ~y, fillcolor = "firebrick",opacity=0.6, line = list(width = 0),
                    hoverinfo="text", name =paste('high probability of stress to aquatic life')) %>%
       add_lines(data = dat, x=~SampleDate,y=~bottom, mode='line', line = list(color = 'black'),
-                hoverinfo = "none", name="DO Standard") %>%
+                hoverinfo = "text", text="DO Standard", name="DO Standard") %>%
       add_markers(data = dat, x= ~SampleDate, y= ~DO,mode = 'scatter', name="DO (mg/L)", marker = list(color= '#535559'),
                   hoverinfo="text",text=~paste(sep="<br>",
                                                paste("Date: ",SampleDate),
