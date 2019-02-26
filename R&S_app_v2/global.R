@@ -17,8 +17,8 @@ library(magrittr)
 source('appModules/multipleDependentSelectizeArguments.R')
 source('newBacteriaStandard_workingUpdatedRecSeason.R') # version with 2/3 samples in April-Oct
 #source('newBacteriaStandard_working.R') # version with April-Oct +/- 30 days
-conventionals_sf <- readRDS('data/conventionals_sf.RDS')
-#conventionals_sf <- readRDS('data/conventionals_sf_draft2020.RDS')
+#conventionals_sf <- readRDS('data/conventionals_sf.RDS')
+conventionals_sf <- readRDS('data/conventionals_sf_draft2020.RDS')
 
 monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
 

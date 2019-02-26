@@ -2,27 +2,27 @@
 source('global.R')
 source('AUshapefileLocation.R')
 
-# old data
-conventionals <- suppressWarnings(read_csv('data/CONVENTIONALS_20171010.csv'))
-conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
 
 
 # Draft 2020 data
-#conventionals <- read_csv('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.csv') %>%
-#  filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
-#  rename('DO' = "DO_mg/L", "NITROGEN" = "NITROGEN_mg/L",  "AMMONIA" = "AMMONIA_mg/L" ,
-#       #"NH3_DISS" = , "NH3_TOTAL"  , 
-#       "PHOSPHORUS"= "PHOSPHORUS_mg/L" , "FECAL_COLI" = 'STORET_31616', "E.COLI" = 'ECOLI_CFU/100mL', 
-#       "ENTEROCOCCI" = 'STORET_31649', "CHLOROPHYLL" = 'STORET_32211', "SSC" = "STORET_SSC-TOTAL" , 
-#       "SSC_RMK" = "RMK_SSC-TOTAL" , "NITRATE" = "NITRATE_mg/L",  "CHLORIDE" = "CHLORIDE_mg/L" , 
-#       "SULFATE_TOTAL" = "SULFATE_mg/L",   "SULFATE_DISS" = 'STORET_00946')
-#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
+conventionals <- read_csv('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.csv') %>%
+  filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
+  rename('DO' = "DO_mg/L", "NITROGEN" = "NITROGEN_mg/L",  "AMMONIA" = "AMMONIA_mg/L" ,
+       #"NH3_DISS" = , "NH3_TOTAL"  , 
+       "PHOSPHORUS"= "PHOSPHORUS_mg/L" , "FECAL_COLI" = 'STORET_31616', "E.COLI" = 'ECOLI_CFU/100mL', 
+       "ENTEROCOCCI" = 'STORET_31649', "CHLOROPHYLL" = 'STORET_32211', "SSC" = "STORET_SSC-TOTAL" , 
+       "SSC_RMK" = "RMK_SSC-TOTAL" , "NITRATE" = "NITRATE_mg/L",  "CHLORIDE" = "CHLORIDE_mg/L" , 
+       "SULFATE_TOTAL" = "SULFATE_mg/L",   "SULFATE_DISS" = 'STORET_00946')
+conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
 
 # Change global.R to read
 #conventionals_sf <- readRDS('data/conventionals_sf_draft2020.RDS')
 
 # Change AUshapefileLocation.R
 
+# old data
+#conventionals <- suppressWarnings(read_csv('data/CONVENTIONALS_20171010.csv'))
+#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
 
 
 WCmetals <- read_excel('data/WATER_METALS_20170712.xlsx')
@@ -151,7 +151,7 @@ shinyServer(function(input, output, session) {
   conventionals_HUC <- eventReactive( input$pullHUCdata, {
     z <- filter(conventionals, Huc6_Vahu6 %in% huc6_filter()$VAHU6) %>%
       left_join(dplyr::select(stationTable(), FDT_STA_ID, SEC, CLASS, SPSTDS, ID305B_1, ID305B_2, ID305B_3,
-                              STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3
+                              STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin
                               ), by='FDT_STA_ID')})
   
   output$AUSelection_ <- renderUI({ req(conventionals_HUC())
@@ -186,7 +186,7 @@ shinyServer(function(input, output, session) {
   
   output$stationMap <- renderLeaflet({
     req(stationData())
-    point <- select(stationData()[1,],  FDT_STA_ID:FDT_SPG_CODE, STA_LV2_CODE:ID305B_3 ) %>%
+    point <- select(stationData()[1,],  FDT_STA_ID:FDT_SPG_CODE, STA_LV2_CODE:ID305B_3, Latitude, Longitude ) %>%
       st_as_sf(coords = c("Longitude", "Latitude"), 
                remove = F, # don't remove these lat/lon cols from df
                crs = 4269) # add projection, needs to be geographic for now bc entering lat/lng
@@ -202,7 +202,7 @@ shinyServer(function(input, output, session) {
   
   output$stationHistoricalInfo <- DT::renderDataTable({ req(stationData())
     z <- filter(stationTable(), FDT_STA_ID == input$stationSelection) %>% 
-      select(STATION_ID:Notes) %>%
+      select(STATION_ID:COMMENTS) %>%
       t() %>% as.data.frame() %>% rename(`Station Information From Last Cycle` = 1)
     DT::datatable(z, options= list(pageLength = nrow(z), scrollY = "250px", dom='t'))  })
   

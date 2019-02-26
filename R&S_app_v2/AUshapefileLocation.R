@@ -8,6 +8,6 @@
 ### NOTE: The direction of the / is very important and is opposite of Windows
 #         default path break notation.
 
-regionalAUs <- st_read('GIS/AU_BRRO_2016_WGS84.shp')
-#regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_reservoirBRRO.shp') %>%
-#  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+#regionalAUs <- st_read('GIS/AU_BRRO_2016_WGS84.shp')
+regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_reservoirBRRO.shp') %>%
+  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
