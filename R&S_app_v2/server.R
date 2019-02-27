@@ -16,6 +16,9 @@ conventionals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS
 conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
 
 WCmetals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-WATER_METALS_VALUES_20190207_EVJ.csv')
+Smetals <- read_excel('data/draft2020data/CEDSWQM_2020_IR_DATA-CEDSWQM_SEDIMENT_20190213.xlsx') %>%
+  dplyr::select(FDT_STA_ID:ZINC..70, COMMENT..89)
+names(Smetals) <- gsub( "[..].*", "", names(Smetals)) # remove anything after .. in name
 
 
 # Change global.R to read
@@ -29,9 +32,9 @@ WCmetals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-WATER_METALS_VALUE
 
 
 #WCmetals <- read_excel('data/WATER_METALS_20170712.xlsx')
-Smetals <- read_excel('data/SEDIMENT_20170712.xlsx') %>% #fix column name duplications
-  dplyr::select(FDT_STA_ID,`ACENAPHTHENE..194`:`COMMENT..227`) 
-names(Smetals)[2:35] <- gsub( "[..].*", "", names(Smetals)[2:35] )
+#Smetals <- read_excel('data/SEDIMENT_20170712.xlsx') %>% #fix column name duplications
+#  dplyr::select(FDT_STA_ID,`ACENAPHTHENE..194`:`COMMENT..227`) 
+#names(Smetals)[2:35] <- gsub( "[..].*", "", names(Smetals)[2:35] )
 
 # Statewide Assessment layer
 assessmentLayer <- st_read('GIS/AssessmentRegions_VA84_basins.shp') %>%
@@ -291,6 +294,8 @@ shinyServer(function(input, output, session) {
       formatStyle(c('WAT_TOX_VIO','WAT_TOX_STAT'), 'WAT_TOX_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
       formatStyle(c('SED_MET_VIO','SED_MET_STAT'), 'SED_MET_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
       formatStyle(c('BENTHIC_STAT'), 'BENTHIC_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) 
+    
+    # for yellow vs red, maybe %>% just a format style of yellow if _VIO column >1 and then run the red review code?
       
 
   })

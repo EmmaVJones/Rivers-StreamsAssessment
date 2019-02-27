@@ -71,13 +71,13 @@ metalsTableSingleStation <- function(input,output,session, AUdata, WCmetals ,Sme
   
   output$SmetalsRangeTableSingleSite <- DT::renderDataTable({
     req(Smetals_oneStation())
-    z <- dplyr::select(Smetals_oneStation(), FDT_STA_ID, FDT_DATE_TIME:`CHLORDANE_TOTAL`)
+    z <- dplyr::select(Smetals_oneStation(), FDT_STA_ID, FDT_DATE_TIME:ENDRINT)
     z$FDT_DATE_TIME <- as.character(as.POSIXct(z$FDT_DATE_TIME, format="%m/%d/%Y %H:%M"))
     DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t'))     })
   
   output$SstationmetalsExceedanceRate <- DT::renderDataTable({
     req(input$Smetals_oneStationSelection, Smetals_oneStation())
-    z <- dplyr::select(Smetals_oneStation(), FDT_STA_ID, `FDT_DATE_TIME`,`ACENAPHTHENE`:COMMENT)
+    z <- dplyr::select(Smetals_oneStation(), FDT_STA_ID, `FDT_DATE_TIME`,ARSENIC:COMMENT)
     z$FDT_DATE_TIME <- as.character(as.POSIXct(z$FDT_DATE_TIME, format="%m/%d/%Y %H:%M"))
     DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t')) %>%
       formatStyle(names(z), backgroundColor = styleEqual(c('OE'), c('red'))) # highlight cells red if not supporting
