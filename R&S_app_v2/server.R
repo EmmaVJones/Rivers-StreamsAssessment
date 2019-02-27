@@ -5,7 +5,7 @@ source('AUshapefileLocation.R')
 
 
 # Draft 2020 data
-conventionals <- read_csv('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.csv') %>%
+conventionals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.csv') %>%
   filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
   rename('DO' = "DO_mg/L", "NITROGEN" = "NITROGEN_mg/L",  "AMMONIA" = "AMMONIA_mg/L" ,
        #"NH3_DISS" = , "NH3_TOTAL"  , 
@@ -14,6 +14,9 @@ conventionals <- read_csv('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/
        "SSC_RMK" = "RMK_SSC-TOTAL" , "NITRATE" = "NITRATE_mg/L",  "CHLORIDE" = "CHLORIDE_mg/L" , 
        "SULFATE_TOTAL" = "SULFATE_mg/L",   "SULFATE_DISS" = 'STORET_00946')
 conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
+
+WCmetals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-WATER_METALS_VALUES_20190207_EVJ.csv')
+
 
 # Change global.R to read
 #conventionals_sf <- readRDS('data/conventionals_sf_draft2020.RDS')
@@ -25,7 +28,7 @@ conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="
 #conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
 
 
-WCmetals <- read_excel('data/WATER_METALS_20170712.xlsx')
+#WCmetals <- read_excel('data/WATER_METALS_20170712.xlsx')
 Smetals <- read_excel('data/SEDIMENT_20170712.xlsx') %>% #fix column name duplications
   dplyr::select(FDT_STA_ID,`ACENAPHTHENE..194`:`COMMENT..227`) 
 names(Smetals)[2:35] <- gsub( "[..].*", "", names(Smetals)[2:35] )
