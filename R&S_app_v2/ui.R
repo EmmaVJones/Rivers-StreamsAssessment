@@ -36,7 +36,7 @@ shinyUI(fluidPage(theme="yeti.css",
                                           p("Some data sources are compiled for users and programmed into the app, requiring no user manipulation.
                                             These datasets include: "),
                                           tags$ul(
-                                            tags$li('Conventionals- CEDS data pulled and filtered by Roger Stewart (roger.stewart@deq.virginia.gov) for each 
+                                            tags$li('Conventionals- CEDS data pulled and analyzed by Roger Stewart (roger.stewart@deq.virginia.gov) for each 
                                             Integrated Report data window.'), 
                                             tags$li('Water Column and Sediment Metals- CEDS data pulled, filtered, and analyzed by Roger Stewart for each 
                                             Integrated Report data window.'), 
@@ -112,9 +112,11 @@ shinyUI(fluidPage(theme="yeti.css",
                                                   where exceedances are present and should be reviewed in the individual parameter visualization tabs below.'),
                                          h4('Official Station Results Table'),
                                          helpText('Note that WAT_TOX_VIO AND WAT_TOX_STAT are only reflecting ammonia analysis.'),
-                                         DT::dataTableOutput('stationTableDataSummary'),
-                                         #h4('Additional Results'),
-                                         #DT::dataTableOutput('stationTableDataSummary2'),
+                                         DT::dataTableOutput('stationTableDataSummary'), br(), 
+                                         h4('PWS violations'),
+                                         helpText("Any PWS violations should noted in a station's COMMENT field of the Stations Table. The table below organizes 
+                                                  PWS information to expedite the comment process."),
+                                         DT::dataTableOutput('PWStable'),
                                          br(),hr(),br(),
                                          h3('Assessment Unit Raw Data Review and Visualization'),
                                          tabsetPanel(

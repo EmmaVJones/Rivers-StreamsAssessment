@@ -1,66 +1,10 @@
 # Run in R 3.5.1
 source('global.R')
-source('AUshapefileLocation.R')
+#source('AUshapefileLocation.R')
 
 
 
 # Draft 2020 data
-conventionals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.csv') %>%
-  filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
-  rename('DO' = "DO_mg/L", "NITROGEN" = "NITROGEN_mg/L",  "AMMONIA" = "AMMONIA_mg/L" ,
-       #"NH3_DISS" = , "NH3_TOTAL"  , 
-       "PHOSPHORUS"= "PHOSPHORUS_mg/L" , "FECAL_COLI" = 'STORET_31616', "E.COLI" = 'ECOLI_CFU/100mL', 
-       "ENTEROCOCCI" = 'STORET_31649', "CHLOROPHYLL" = 'STORET_32211', "SSC" = "STORET_SSC-TOTAL" , 
-       "SSC_RMK" = "RMK_SSC-TOTAL" , "NITRATE" = "NITRATE_mg/L",  "CHLORIDE" = "CHLORIDE_mg/L" , 
-       "SULFATE_TOTAL" = "SULFATE_mg/L",   "SULFATE_DISS" = 'STORET_00946')
-conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
-
-WCmetals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-WATER_METALS_VALUES_20190207_EVJ.csv')
-Smetals <- read_excel('data/draft2020data/CEDSWQM_2020_IR_DATA-CEDSWQM_SEDIMENT_20190213.xlsx') %>%
-  dplyr::select(FDT_STA_ID:ZINC..70, COMMENT..89)
-names(Smetals) <- gsub( "[..].*", "", names(Smetals)) # remove anything after .. in name
-
-
-# Change global.R to read
-#conventionals_sf <- readRDS('data/conventionals_sf_draft2020.RDS')
-
-# Change AUshapefileLocation.R
-
-# old data
-#conventionals <- suppressWarnings(read_csv('data/CONVENTIONALS_20171010.csv'))
-#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
-
-
-#WCmetals <- read_excel('data/WATER_METALS_20170712.xlsx')
-#Smetals <- read_excel('data/SEDIMENT_20170712.xlsx') %>% #fix column name duplications
-#  dplyr::select(FDT_STA_ID,`ACENAPHTHENE..194`:`COMMENT..227`) 
-#names(Smetals)[2:35] <- gsub( "[..].*", "", names(Smetals)[2:35] )
-
-# Statewide Assessment layer
-assessmentLayer <- st_read('GIS/AssessmentRegions_VA84_basins.shp') %>%
-  st_transform( st_crs(4326)) 
-
-# Bring in latest EDAS VSCI and (combined) VCPMI queries
-VSCI <- read_excel('data/Family Metrics VSCI Calculation.xlsx')%>%
-  filter(RepNum == 1 & Target_Count == 110 &
-           CollDate >= assessmentPeriod[1] )
-VCPMI <- read_excel('data/Family Metrics - CPMI Combined.xlsx')%>%
-  filter(RepNum == 1 & Target_Count == 110 &
-           CollDate >= assessmentPeriod[1] )
-
-# unused data
-#stationTable <- read_csv('data/BRRO_Sites_AU_WQS.csv')
-#stationTable1 <- readRDS('data/BRROsites_ROA_sf.RDS')
-#commentList <- readRDS('Comments/commentList.RDS')
-#monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
-
-
-
-mapviewOptions(basemaps = c( "OpenStreetMap",'Esri.WorldImagery'),
-               vector.palette = colorRampPalette(brewer.pal(8, "Set1")),
-               na.color = "magenta",
-               legend=FALSE)
-
 
 
 shinyServer(function(input, output, session) {
@@ -300,21 +244,35 @@ shinyServer(function(input, output, session) {
 
   })
   
-  #output$stationTableDataSummary2 <- DT::renderDataTable({
+  output$PWStable <- DT::renderDataTable({
+    req(stationData())
+    if(is.na(unique(stationData()$SPSTDS))){
+      PWSconcat <- data.frame(STATION_ID = unique(stationData()$FDT_STA_ID),
+                              PWS= 'PWS Standards Do Not Apply To Station')
+      DT::datatable(PWSconcat, escape=F, rownames = F, options= list(scrollX = TRUE, pageLength = nrow(PWSconcat), dom='t'))
+      
+    } else {
+      PWSconcat <- cbind(data.frame(STATION_ID = unique(stationData()$FDT_STA_ID)),
+                           nitratePWS(stationData()),
+                           chloridePWS(stationData()),
+                           TSulfatePWS(stationData())) %>%
+          dplyr::select(-ends_with('exceedanceRate'))
+        
+        DT::datatable(PWSconcat, escape=F, rownames = F, options= list(scrollX = TRUE, pageLength = nrow(PWSconcat), dom='t')) %>% 
+          formatStyle(c("PWS_Acute_Nitrate_VIO","PWS_Acute_Nitrate_SAMP","PWS_Acute_Nitrate_STAT"), "PWS_Acute_Nitrate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+          formatStyle(c("PWS_Acute_Chloride_VIO","PWS_Acute_Chloride_SAMP","PWS_Acute_Chloride_STAT"), "PWS_Acute_Chloride_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+          formatStyle(c("PWS_Acute_Total_Sulfate_VIO","PWS_Acute_Total_Sulfate_SAMP","PWS_Acute_Total_Sulfate_STAT"), "PWS_Acute_Total_Sulfate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) 
+      
+    }
+    
+  })
+  
+  #output$PWStable <- renderPrint({
   #  req(stationData())
-  #  z <- cbind(data.frame(StationID = unique(stationData()$FDT_STA_ID)), acuteNH3exceedance(stationData())) %>%
-  #    select(-ends_with('exceedanceRate'))
-  #  datatable(z, extensions = 'Buttons', escape=F, rownames = F, editable = TRUE,
-  #            options= list(scrollX = TRUE, pageLength = nrow(z),
-  #                          # hide certain columns
-  #                          columnDefs = list(list(targets = 6, visible = FALSE)),
-  #                          dom='Bt', buttons=list('copy',
-  #                                                 list(extend='csv',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep='')),
-  #                                                 list(extend='excel',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep=''))))) %>% 
-  #    # format cell background color based on hidden column
-  #    formatStyle(c('AcuteAmmonia_SAMP','AcuteAmmonia_VIO','AcuteAmmonia_STAT'), 'AcuteAmmonia_STAT', backgroundColor = styleEqual(c('Review'), c('red')))
-  #  
+  #  unique(stationData()$SPSTDS) 
   #})
+  
+  
   
   
   #### Data Sub Tab ####---------------------------------------------------------------------------------------------------
