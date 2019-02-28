@@ -406,6 +406,20 @@ nitratePWS <- function(x){
 }
 
 
+#### Total Sulfate PWS Assessment Functions ---------------------------------------------------------------------------------------------------
+
+TSulfatePWS <- function(x){
+  if(grepl('PWS', unique(x$SPSTDS))){
+    tSulfate <- dplyr::select(x, FDT_DATE_TIME, FDT_DEPTH, SULFATE_TOTAL) %>%
+      filter(!is.na(SULFATE_TOTAL)) %>% #get rid of NA's
+      mutate(limit = 250) %>%
+      rename(parameter = !!names(.[3])) %>% # rename columns to make functions easier to apply
+      mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
+    return(quickStats(tSulfate, 'PWS_Acute_Total_Sulfate'))  }  
+}
+
+
+
 
 #### Benthics Sampling Metrics Functions ---------------------------------------------------------------------------------------------------
 

@@ -1,3 +1,5 @@
+
+
 DSulfatePlotlySingleStationUI <- function(id){
   ns <- NS(id)
   tagList(
@@ -6,8 +8,19 @@ DSulfatePlotlySingleStationUI <- function(id){
       uiOutput(ns('DSulfate_oneStationSelectionUI')),
       selectInput(ns('sulfateType'),'Select Total or Dissolved Sulfate', choices = c('Total Sulfate', 'Dissolved Sulfate'),
                   width = '30%'),
-      plotlyOutput(ns('DSulfateplotly'))  )
-  )
+      plotlyOutput(ns('DSulfateplotly')),
+      conditionalPanel(paste0("input['",ns('sulfateType'),"'] == 'Total Sulfate'"),
+                       #ns("input.sulfateType == 'Total Sulfate'"),
+                       fluidRow(
+                         column(8, h5('All total sulfate records that are above the PWS criteria (where applicable) for the ',span(strong('selected site')),' are highlighted below.'),
+                                div(style = 'height:150px;overflow-y: scroll', tableOutput(ns('TSulfateRangeTableSingleSite')))),
+                         column(4, h5('Individual total sulfate exceedance statistics for the ',span(strong('selected site')),' are highlighted below.
+                                      If no data is presented, then the PWS criteria is not applicable to the station.'),
+                                tableOutput(ns("stationTSulfateExceedanceRate"))))
+                       )
+      
+                       )
+    )
 }
 
 
@@ -62,8 +75,7 @@ DSulfatePlotlySingleStation <- function(input,output,session, AUdata, stationSel
       
       plot_ly(data=dat)%>%
         add_lines(data=dat, x=~SampleDate,y=~top, mode='line', line = list(color = 'black'),
-                  hoverinfo =  "text", text = "Sulfate PWS Criteria (250,000 ug/L)",
-                  name="Sulfate PWS Criteria (250 mg/L)") %>%
+                  hoverinfo = "text", text = "Sulfate PWS Criteria (250,000 ug/L)", name="Sulfate PWS Criteria (250 mg/L)") %>%
         add_markers(data=dat, x= ~SampleDate, y= ~SULFATE_TOTAL,mode = 'scatter', name="Total Sulfate (mg/L)", marker = list(color= '#535559'),
                     hoverinfo="text",text=~paste(sep="<br>",
                                                  paste("Date: ",SampleDate),
@@ -76,5 +88,31 @@ DSulfatePlotlySingleStation <- function(input,output,session, AUdata, stationSel
     
   })
   
+  output$TSulfateRangeTableSingleSite <- renderTable({
+    req(DSulfate_oneStation())
+    if(grepl('PWS', unique(DSulfate_oneStation()$SPSTDS))){
+      return(dplyr::select(DSulfate_oneStation(), FDT_DATE_TIME, FDT_DEPTH, SULFATE_TOTAL) %>%
+               filter(!is.na(SULFATE_TOTAL)) %>% #get rid of NA's
+               mutate(PWSlimit = 250) %>%
+               mutate(exceeds = ifelse(SULFATE_TOTAL > PWSlimit, T, F)) %>% # Identify where above PWS limit
+               filter(exceeds == TRUE))  
+    }else {
+      return('Station not designated PWS')
+    }  })
+  
+  output$stationTSulfateExceedanceRate <- renderTable({
+    req(#input$Chloride_oneStationSelection)#,
+      DSulfate_oneStation())
+    z <- TSulfatePWS(DSulfate_oneStation()) 
+    if(!is.null(z)){
+      return(z %>% dplyr::select(1:3) %>%# don't give assessment determination for single station
+               dplyr::rename(nSamples = PWS_Acute_Total_Sulfate_SAMP,
+                             nExceedance= PWS_Acute_Total_Sulfate_VIO,
+                             exceedanceRate= PWS_Acute_Total_Sulfate_exceedanceRate))# make it match everything else
+    } else {
+      return(z)
+    }
+    
+  }) 
+  
 }
-
