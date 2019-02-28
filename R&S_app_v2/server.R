@@ -266,7 +266,7 @@ shinyServer(function(input, output, session) {
       dplyr::select(AcuteAmmonia_VIO, AcuteAmmonia_STAT) %>% 
       dplyr::rename('WAT_TOX_VIO' ='AcuteAmmonia_VIO','WAT_TOX_STAT' = 'AcuteAmmonia_STAT')#data.frame(WAT_TOX_VIO='Not Analyzed by App', WAT_TOX_STAT='Not Analyzed by App'),# Placeholder for water toxics
     more <- cbind(metalsExceedances(filter(Smetals, FDT_STA_ID %in% stationData()$FDT_STA_ID) %>% 
-                                      dplyr::select(`ACENAPHTHENE`:ZINC), 'SED_MET') %>%
+                                      dplyr::select(ARSENIC:ZINC), 'SED_MET') %>%
                     dplyr::select(-ends_with('exceedanceRate')),
                   data.frame(SED_TOX_VIO='Not Analyzed by App', SED_TOX_STAT='Not Analyzed by App'),# Placeholder for sediment toxics
                   data.frame(FISH_MET_VIO='Not Analyzed by App', FISH_MET_STAT='Not Analyzed by App'), # Placeholder for fish metals

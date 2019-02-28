@@ -103,10 +103,11 @@ ClPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
     }  })
   
   output$stationChlorideExceedanceRate <- renderTable({
-    req(input$Chloride_oneStationSelection, Cl_oneStation())
+    req(#input$Chloride_oneStationSelection, 
+      Cl_oneStation())
     chloridePWS(Cl_oneStation()) %>%
       dplyr::select(1:3) %>%# don't give assessment determination for single station
-      dplyr::rename(nSamples = PWS_Chloride_Acute_SAMP,nExceedance= PWS_Chloride_Acute_VIO,exceedanceRate= PWS_Chloride_Acute_exceedanceRate)}) # make it match everything else
-  
+      dplyr::rename(nSamples = PWS_Acute_Chloride_SAMP,nExceedance= PWS_Acute_Chloride_VIO,exceedanceRate= PWS_Acute_Chloride_exceedanceRate)}) # make it match everything else
+
   
 }

@@ -119,6 +119,8 @@ StationTableStartingData <- function(x){
 
 #dataFrame <-ammonia
 #dateTimeColumn <- 'FDT_DATE_TIME2'
+#nYears <- 3
+#consecutive <- TRUE
 lastXyears <- function(dataFrame, dateTimeColumn, nYears, consecutive){ # not bombproof but works for nYears=3
   uniqueYears <- dplyr::select(dataFrame, dateTimeColumn) %>% 
     mutate(sampleYear = lubridate::year(get(dateTimeColumn))) %>% 
@@ -344,24 +346,34 @@ acuteNH3exceedance <- function(x){
     ammonia <- acuteNH3limit(x) %>%
       filter(!is.na(AMMONIA)) %>% #get rid of NA's
       mutate(sampleYear = lubridate::year(FDT_DATE_TIME2)) # add year to enable filtering by last 3 years with data
-    last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3, TRUE)
-    ammonia <- filter(ammonia, sampleYear %in% last3years) %>%
-      select(-sampleYear) %>%
-      rename(parameter = !!names(.[4]), limit = !!names(.[5])) %>% # rename columns to make functions easier to apply
-      mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
-    
-    return(quickStats(ammonia, 'AcuteAmmonia'))  }
+    if(nrow(ammonia) == 0){
+      return(quickStats(ammonia,'AcuteAmmonia'))
+    } else {
+      last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3, TRUE)
+      ammonia <- filter(ammonia, sampleYear %in% last3years) %>%
+        select(-sampleYear) %>%
+        rename(parameter = !!names(.[4]), limit = !!names(.[5])) %>% # rename columns to make functions easier to apply
+        mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
+      
+      return(quickStats(ammonia, 'AcuteAmmonia'))  }
+  }
+  
   # Trout present scenario, freshwater
   if(unique(x$CLASS) %in% c("V","VI")){
     ammonia <- acuteNH3limit(x) %>%
       filter(!is.na(AMMONIA)) %>% #get rid of NA's
       mutate(sampleYear = lubridate::year(FDT_DATE_TIME2)) # add year to enable filtering by last 3 years with data
-    last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3)
-    ammonia <- filter(ammonia, sampleYear %in% last3years) %>%
-      select(-sampleYear) %>%
-      rename(parameter = !!names(.[4]), limit = !!names(.[5])) %>% # rename columns to make functions easier to apply
-      mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
-    return(quickStats(ammonia, 'AcuteAmmonia'))
+    if(nrow(ammonia) == 0){
+      return(quickStats(ammonia,'AcuteAmmonia'))
+    } else {
+      last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3, TRUE)
+      ammonia <- filter(ammonia, sampleYear %in% last3years) %>%
+        select(-sampleYear) %>%
+        rename(parameter = !!names(.[4]), limit = !!names(.[5])) %>% # rename columns to make functions easier to apply
+        mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
+      return(quickStats(ammonia, 'AcuteAmmonia'))
+    }
+    
   }
 }
 

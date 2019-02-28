@@ -62,7 +62,8 @@ DSulfatePlotlySingleStation <- function(input,output,session, AUdata, stationSel
       
       plot_ly(data=dat)%>%
         add_lines(data=dat, x=~SampleDate,y=~top, mode='line', line = list(color = 'black'),
-                  hoverinfo = "none", name="Sulfate PWS Criteria (250 mg/L)") %>%
+                  hoverinfo =  "text", text = "Sulfate PWS Criteria (250,000 ug/L)",
+                  name="Sulfate PWS Criteria (250 mg/L)") %>%
         add_markers(data=dat, x= ~SampleDate, y= ~SULFATE_TOTAL,mode = 'scatter', name="Total Sulfate (mg/L)", marker = list(color= '#535559'),
                     hoverinfo="text",text=~paste(sep="<br>",
                                                  paste("Date: ",SampleDate),

@@ -476,12 +476,16 @@ conventionals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS
        "SULFATE_TOTAL" = "SULFATE_mg/L",   "SULFATE_DISS" = 'STORET_00946')
 conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
 
-
 # Bring in Level 3 ecoregion
 library(sf)
 ecoregion <- st_read('GIS/VA_level3ecoregion.shp')
 
-# add ecoregion to conventionals info
+# Bring back in assessment regions information one last time because conventionals doesn't have Basin in 2020
+assessmentLayer <- st_read('GIS/AssessmentRegions_VA84_basins.shp') %>%
+  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+# Make conventionals spatial object
 conventionals_sf <- conventionals %>%
   distinct(FDT_STA_ID, .keep_all = T) %>%
   st_as_sf( coords = c("Longitude", "Latitude"), 
@@ -490,13 +494,17 @@ conventionals_sf <- conventionals %>%
 
 # make sure everything will work
 identical(st_crs(conventionals_sf),st_crs(ecoregion))
+identical(st_crs(conventionals_sf),st_crs(assessmentLayer))
 
-conventionals_sf <- st_join(conventionals_sf, 
-                           select(ecoregion, US_L3CODE, US_L3NAME), 
-                           join = st_intersects)
+# first get Basin information for conventionals, then Ecoregion
+conventionals_sf <-  st_join(conventionals_sf, 
+                          select(assessmentLayer, Basin), join = st_intersects) %>%
+  st_join(select(ecoregion, US_L3CODE, US_L3NAME), join = st_intersects) %>%
+  st_set_geometry(NULL) # take away spatial component so it can go into csv nicely
 
 saveRDS(conventionals_sf, 'data/conventionals_sf_draft2020.RDS')
 saveRDS(conventionals_sf, 'R&S_app_v1/data/conventionals_sf_draft2020.RDS')
+saveRDS(conventionals_sf, 'R&S_app_v2/data/conventionals_sf_draft2020.RDS')
 ```
 
 
