@@ -20,22 +20,6 @@ Smetals <- read_excel('data/draft2020data/CEDSWQM_2020_IR_DATA-CEDSWQM_SEDIMENT_
   dplyr::select(FDT_STA_ID:ZINC..70, COMMENT..89)
 names(Smetals) <- gsub( "[..].*", "", names(Smetals)) # remove anything after .. in name
 
-
-# Change global.R to read
-#conventionals_sf <- readRDS('data/conventionals_sf_draft2020.RDS')
-
-# Change AUshapefileLocation.R
-
-# old data
-#conventionals <- suppressWarnings(read_csv('data/CONVENTIONALS_20171010.csv'))
-#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
-
-
-#WCmetals <- read_excel('data/WATER_METALS_20170712.xlsx')
-#Smetals <- read_excel('data/SEDIMENT_20170712.xlsx') %>% #fix column name duplications
-#  dplyr::select(FDT_STA_ID,`ACENAPHTHENE..194`:`COMMENT..227`) 
-#names(Smetals)[2:35] <- gsub( "[..].*", "", names(Smetals)[2:35] )
-
 # Statewide Assessment layer
 assessmentLayer <- st_read('GIS/AssessmentRegions_VA84_basins.shp') %>%
   st_transform( st_crs(4326)) 
@@ -47,13 +31,6 @@ VSCI <- read_excel('data/Family Metrics VSCI Calculation.xlsx')%>%
 VCPMI <- read_excel('data/Family Metrics - CPMI Combined.xlsx')%>%
   filter(RepNum == 1 & Target_Count == 110 &
            CollDate >= assessmentPeriod[1] )
-
-# unused data
-#stationTable <- read_csv('data/BRRO_Sites_AU_WQS.csv')
-#stationTable1 <- readRDS('data/BRROsites_ROA_sf.RDS')
-#commentList <- readRDS('Comments/commentList.RDS')
-#monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
-
 
 
 mapviewOptions(basemaps = c( "OpenStreetMap",'Esri.WorldImagery'),
@@ -86,19 +63,9 @@ shinyServer(function(input, output, session) {
     dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance")
   })
   
+ 
   
-##### NEED TO FIX #######################################################################  
-  #output$stationTableMissingStations <- DT::renderDataTable({
-  #  req(stationTable())
-  #  # decide which region data was input from
-  #  Region <- unique(stationTable()$Deq_Region)
-  #  z <- filter(conventionals, Deq_Region == 'Blue Ridge') %>%
-  #    distinct(FDT_STA_ID, .keep_all = TRUE) %>%
-  #    filter(FDT_STA_ID %in% stationTable()$FDT_STA_ID) %>%
-  #    select(FDT_STA_ID:FDT_SPG_CODE, STA_LV2_CODE:STA_CBP_NAME)
-  #  DT::datatable(z,rownames = FALSE, options= list(scrollX = TRUE, pageLength = 20, scrollY = "200px", dom='Bt'))
-  #})
-############################################################################################  
+  
   
   ## Watershed Selection Tab
   
@@ -147,16 +114,29 @@ shinyServer(function(input, output, session) {
               popup= popupTable(AUs(), zcol=c("ID305B","MILES","CYCLE","WATER_NAME","LOCATION" )))
     m@map })
   
-  ## Station Review Tab
+  
+  
+  
+  
+  ## Assessment Unit Review Tab
+  
+  
   # Show selected AU
   output$selectedHUC <- DT::renderDataTable({
     datatable(huc6_filter() %>% st_set_geometry(NULL) %>% select(VAHU6, VaName, Basin),
-              rownames = FALSE, options= list(pageLength = 20, scrollY = "35px", dom='Bt'))})
+              rownames = FALSE, options= list(pageLength = 1, scrollY = "35px", dom='t'))})
+  
+  
+  # Don't let user click pull data button if no conventionals data for VAHU6
+  observe({
+    shinyjs::toggleState('pullHUCdata', nrow(AUs())!=0 )
+  })
+  
   
   # Pull Conventionals data for selected AU on click
   conventionals_HUC <- eventReactive( input$pullHUCdata, {
     z <- filter(conventionals, Huc6_Vahu6 %in% huc6_filter()$VAHU6) %>%
-      left_join(dplyr::select(stationTable(), FDT_STA_ID, SEC, CLASS, SPSTDS, ID305B_1, ID305B_2, ID305B_3,
+      left_join(dplyr::select(stationTable(), FDT_STA_ID, SEC, CLASS, SPSTDS,PWS, ID305B_1, ID305B_2, ID305B_3,
                               STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin
                               ), by='FDT_STA_ID')})
   
@@ -173,7 +153,9 @@ shinyServer(function(input, output, session) {
                    ID305B_2 %in% input$AUSelection | 
                    ID305B_2 %in% input$AUSelection) %>%
       distinct(FDT_STA_ID)
-    selectInput('stationSelection', 'Station Selection', choices = unique(z$FDT_STA_ID))  })
+    fluidRow(selectInput('stationSelection', 'Station Selection', choices = unique(z$FDT_STA_ID)),
+             helpText("The stations available in the drop down are limited to stations with an ID305B_1 designation equal 
+                      to the selected AU. All AU's associated with the selected station can be viewed in the map below."))})
   
   AUData <- eventReactive( input$AUSelection, {
     filter(conventionals_HUC(), ID305B_1 %in% input$AUSelection | 
@@ -214,35 +196,7 @@ shinyServer(function(input, output, session) {
   
   ## Station Table View Section
   observe(siteData$StationTablePrelimStuff <- StationTableStartingData(stationData()))
-  #observe(siteData$StationTableResults <- cbind(tempExceedances(stationData()), 
-  #                                              DOExceedances_Min(stationData()), pHExceedances(stationData()),
-  #                                              bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData(), 'E.COLI', 126, 235),'E.COLI') %>% 
-  #                                                dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
-  #                                              bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData(), 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
-  #                                                dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
-  #                                              
-  #                                              metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData()$FDT_STA_ID) %>% 
-  #                                                                  dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'),
-  #                                              acuteNH3exceedance(stationData()) %>% 
-  #                                                dplyr::select(AcuteAmmonia_VIO, AcuteAmmonia_STAT) %>% 
-  #                                                dplyr::rename('WAT_TOX_VIO' ='AcuteAmmonia_VIO','WAT_TOX_STAT' = 'AcuteAmmonia_STAT'),#data.frame(WAT_TOX_VIO='Not Analyzed by App', WAT_TOX_STAT='Not Analyzed by App'),# Placeholder for water toxics
-  #                                              
-  #                                              # Placeholder for water toxics
-  #                                              metalsExceedances(filter(Smetals, FDT_STA_ID %in% stationData()$FDT_STA_ID) %>% 
-  #                                                                  dplyr::select(`ACENAPHTHENE`:ZINC), 'SED_MET'),
-  #                                              
-  #                                              data.frame(SED_TOX_VIO='Not Analyzed by App', SED_TOX_STAT='Not Analyzed by App'),# Placeholder for sediment toxics
-  #                                              data.frame(FISH_MET_VIO='Not Analyzed by App', FISH_MET_STAT='Not Analyzed by App'), # Placeholder for fish metals
-  #                                              data.frame(FISH_TOX_VIO='Not Analyzed by App', FISH_TOX_STAT='Not Analyzed by App'),# Placeholder for fish toxics
-  #                                              benthicAssessment(stationData(),conventionals_sf,VSCI,VCPMI),
-  #                                              countTP(stationData()),
-  #                                              countchla(stationData()),
-  #                                              #data.frame(NUT_TP_VIO='Not Analyzed by App',NUT_TP_SAMP= 'Not Analyzed by App', NUT_TP_STAT='Not Analyzed by App'), # Placeholder bc only applies to Lakes or Cbay
-  #                                              #data.frame(NUT_CHLA_VIO='Not Analyzed by App', NUT_CHLA_SAMP='Not Analyzed by App', NUT_CHLA_STAT='Not Analyzed by App'),# Placeholder bc only applies to Lakes or Cbay
-  #                                              data.frame(COMMENTS= 'Not Analyzed by App') # Assessor Comments
-  #)%>%
-  #  dplyr::select(-ends_with('exceedanceRate')))
-# 
+ 
   observe(siteData$StationTableResults1 <- cbind(tempExceedances(stationData()), 
                                                  DOExceedances_Min(stationData()), pHExceedances(stationData()),
                                                  bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData(), 'E.COLI', 126, 235),'E.COLI') %>% 
@@ -284,25 +238,19 @@ shinyServer(function(input, output, session) {
                             dom='Bt', buttons=list('copy',
                                                     list(extend='csv',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep='')),
                                                     list(extend='excel',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep=''))))) %>% 
-      # format cell background color based on hidden column
-      formatStyle(c('TEMP_SAMP','TEMP_VIO','TEMP_STAT'), 'TEMP_STAT', backgroundColor = styleEqual(c('Review'), c('yellow'))) %>%
-      formatStyle(c('DO_SAMP','DO_VIO','DO_STAT'), 'DO_STAT', backgroundColor = styleEqual(c('Review'), c('yellow'))) %>%
-      formatStyle(c('PH_SAMP','PH_VIO','PH_STAT'), 'PH_STAT', backgroundColor = styleEqual(c('Review'), c('yellow'))) %>%
-      formatStyle(c('ECOLI_SAMP','ECOLI_VIO','ECOLI_STAT'), 'ECOLI_STAT', backgroundColor = styleEqual(c('Review'), c('yellow'))) %>%
-      formatStyle(c('ENTER_SAMP','ENTER_VIO','ENTER_STAT'), 'ENTER_STAT', backgroundColor = styleEqual(c('Review'), c('yellow'))) %>%
-      formatStyle(c('WAT_MET_VIO','WAT_MET_STAT'), 'WAT_MET_STAT', backgroundColor = styleEqual(c('Review'), c('yellow'))) %>%
-      formatStyle(c('WAT_TOX_VIO','WAT_TOX_STAT'), 'WAT_TOX_STAT', backgroundColor = styleEqual(c('Review'), c('yellow'))) %>%
-      formatStyle(c('SED_MET_VIO','SED_MET_STAT'), 'SED_MET_STAT', backgroundColor = styleEqual(c('Review'), c('yellow'))) %>%
-      formatStyle(c('BENTHIC_STAT'), 'BENTHIC_STAT', backgroundColor = styleEqual(c('Review'), c('yellow'))) 
-    
-    # for yellow vs red, maybe %>% just a format style of yellow if _VIO column >1 and then run the red review code?
-      
-
-  })
+      formatStyle(c('TEMP_SAMP','TEMP_VIO','TEMP_STAT'), 'TEMP_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
+      formatStyle(c('DO_SAMP','DO_VIO','DO_STAT'), 'DO_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
+      formatStyle(c('PH_SAMP','PH_VIO','PH_STAT'), 'PH_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
+      formatStyle(c('ECOLI_SAMP','ECOLI_VIO','ECOLI_STAT'), 'ECOLI_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
+      formatStyle(c('ENTER_SAMP','ENTER_VIO','ENTER_STAT'), 'ENTER_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
+      formatStyle(c('WAT_MET_VIO','WAT_MET_STAT'), 'WAT_MET_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
+      formatStyle(c('WAT_TOX_VIO','WAT_TOX_STAT'), 'WAT_TOX_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
+      formatStyle(c('SED_MET_VIO','SED_MET_STAT'), 'SED_MET_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
+      formatStyle(c('BENTHIC_STAT'), 'BENTHIC_STAT', backgroundColor = styleEqual(c('Review'), c('yellow')))  })
   
   output$PWStable <- DT::renderDataTable({
     req(stationData())
-    if(is.na(unique(stationData()$SPSTDS))){
+    if(is.na(unique(stationData()$PWS))){
       PWSconcat <- data.frame(STATION_ID = unique(stationData()$FDT_STA_ID),
                               PWS= 'PWS Standards Do Not Apply To Station')
       DT::datatable(PWSconcat, escape=F, rownames = F, options= list(scrollX = TRUE, pageLength = nrow(PWSconcat), dom='t'))
@@ -318,15 +266,10 @@ shinyServer(function(input, output, session) {
           formatStyle(c("PWS_Acute_Nitrate_VIO","PWS_Acute_Nitrate_SAMP","PWS_Acute_Nitrate_STAT"), "PWS_Acute_Nitrate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
           formatStyle(c("PWS_Acute_Chloride_VIO","PWS_Acute_Chloride_SAMP","PWS_Acute_Chloride_STAT"), "PWS_Acute_Chloride_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
           formatStyle(c("PWS_Acute_Total_Sulfate_VIO","PWS_Acute_Total_Sulfate_SAMP","PWS_Acute_Total_Sulfate_STAT"), "PWS_Acute_Total_Sulfate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) 
-      
-    }
+        }
     
   })
-  
-  #output$PWStable <- renderPrint({
-  #  req(stationData())
-  #  unique(stationData()$SPSTDS) 
-  #})
+
   
   
   

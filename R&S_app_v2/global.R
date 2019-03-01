@@ -100,7 +100,8 @@ changeDEQRegionName <- function(stuff){
     if(stuff == "Blue Ridge"){return('BRRO')}
     if(stuff == "Tidewater"){return('TRO')}
     if(stuff == "Southwest" ){return('SWRO')}
-    if(is.na(stuff))return(NA)
+    if(stuff == 'NA'){return('NA')}
+  #  if(is.na(stuff)){return("NA")}
   } else {return(concatinateUnique(stuff))}
 }
 
@@ -341,6 +342,13 @@ acuteNH3limit <- function(x){
 
 # Return one line summarizing samples and violation rate
 acuteNH3exceedance <- function(x){
+  # no data sent to function
+  if(nrow(x)==0){
+    return(quickStats(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_FIELD_PH, AMMONIA) %>%
+                        mutate(NH3limit = NA), 'AcuteAmmonia'))
+  }
+  
+  
   # Trout absent scenario, freshwater
   if(unique(x$CLASS) %in% c("III","IV")){
     ammonia <- acuteNH3limit(x) %>%
@@ -495,11 +503,12 @@ quickStats <- function(parameterDataset, parameter){
   if(nrow(parameterDataset) > 0 ){
     results <- data.frame(VIO = nrow(filter(parameterDataset, exceeds == TRUE)),
                           SAMP = nrow(parameterDataset)) %>%
-      mutate(exceedanceRate = format((VIO/SAMP)*100,digits=3))
+      mutate(exceedanceRate = as.numeric(format((VIO/SAMP)*100,digits=3)))
     
-    #if(results$VIO >= 1 & results$exceedanceRate < 10.5){outcome <- 'Review'}
-    if(results$exceedanceRate > 10.5 & results$VIO >= 1 & results$SAMP > 10){outcome <- 'Review'}
-    if(results$exceedanceRate < 10.5 & results$SAMP > 10){outcome <- 'S'}
+    if(results$VIO >= 1){outcome <- 'Review'} # for Mary
+    if(results$VIO >= 1 & results$exceedanceRate < 10.5){outcome <- 'Review'}
+    if(results$exceedanceRate > 10.5 & results$VIO >= 2 & results$SAMP > 10){outcome <- '10.5% Exceedance'}
+    if(results$VIO < 1 &results$exceedanceRate < 10.5 & results$SAMP > 10){outcome <- 'S'}
     if(results$VIO >= 1 & results$SAMP <= 10){outcome <- 'Review'}
     if(results$VIO < 1 & results$SAMP <= 10){outcome <- 'S'}
     

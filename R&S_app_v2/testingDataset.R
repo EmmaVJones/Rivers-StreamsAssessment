@@ -38,10 +38,10 @@ conventionals <- read_csv('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/
          "SULFATE_TOTAL" = "SULFATE_mg/L",   "SULFATE_DISS" = 'STORET_00946')
 conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
 
-stationTable <- read_csv('data/BRRO_Sites_AU_WQS.csv')
+#stationTable <- read_csv('data/BRRO_Sites_AU_WQS.csv')
 
 
-conventionals_HUC<- left_join(conventionals,dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, SPSTDS, ID305B_1, ID305B_2, ID305B_3), by='FDT_STA_ID')
+#conventionals_HUC<- left_join(conventionals,dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, SPSTDS, ID305B_1, ID305B_2, ID305B_3), by='FDT_STA_ID')
 # Better to leave this one out and run in build Script and then remove before shiny component
 #AUData <- filter(conventionals_HUC, ID305B_1 %in% 'VAW-H01R_JMS04A00' | 
 #                   ID305B_2 %in% 'VAW-H01R_JMS04A00' | 

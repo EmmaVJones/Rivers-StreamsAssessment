@@ -25,17 +25,26 @@ The user will have to have all conventionals data, water column metals, and sedi
 
 ```{r datasources}
 # Regional AU layer from last cycle
-regionalAUs <- st_read('GIS/AU_BRRO_2016_WGS84.shp')
+regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineBRRO.shp') %>%
+  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
 
 # Roger's conventionals data pull
-conventionals <- suppressWarnings(read_csv('data/CONVENTIONALS_20171010.csv'))
+conventionals <- conventionals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.csv') %>%
+  filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
+  rename('DO' = "DO_mg/L", "NITROGEN" = "NITROGEN_mg/L",  "AMMONIA" = "AMMONIA_mg/L" ,
+         #"NH3_DISS" = , "NH3_TOTAL"  , 
+         "PHOSPHORUS"= "PHOSPHORUS_mg/L" , "FECAL_COLI" = 'STORET_31616', "E.COLI" = 'ECOLI_CFU/100mL', 
+         "ENTEROCOCCI" = 'STORET_31649', "CHLOROPHYLL" = 'STORET_32211', "SSC" = "STORET_SSC-TOTAL" , 
+         "SSC_RMK" = "RMK_SSC-TOTAL" , "NITRATE" = "NITRATE_mg/L",  "CHLORIDE" = "CHLORIDE_mg/L" , 
+         "SULFATE_TOTAL" = "SULFATE_mg/L",   "SULFATE_DISS" = 'STORET_00946')
 conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
 
 # Roger's metals data pull
-WCmetals <- read_excel('data/WATER_METALS_20170712.xlsx')
-Smetals <- read_excel('data/SEDIMENT_20170712.xlsx') %>% #fix column name duplications
-  dplyr::select(FDT_STA_ID,`ACENAPHTHENE..194`:`COMMENT..227`) 
-names(Smetals)[2:35] <- gsub( "[..].*", "", names(Smetals)[2:35] )
+WCmetals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-WATER_METALS_VALUES_20190207_EVJ.csv')
+Smetals <- read_excel('data/draft2020data/CEDSWQM_2020_IR_DATA-CEDSWQM_SEDIMENT_20190213.xlsx') %>%
+  dplyr::select(FDT_STA_ID:ZINC..70, COMMENT..89)
+names(Smetals) <- gsub( "[..].*", "", names(Smetals)) # remove anything after .. in name
 
 # Bring in latest EDAS VSCI and (combined) VCPMI queries
 VSCI <- read_excel('data/Family Metrics VSCI Calculation.xlsx')%>%
@@ -45,10 +54,11 @@ VCPMI <- read_excel('data/Family Metrics - CPMI Combined.xlsx')%>%
   filter(RepNum == 1 & Target_Count == 110 &
            CollDate >= assessmentPeriod[1] )
 
-stationTable <- read_csv('data/RegionalResults_AU_WQS.csv') %>%
+stationTable <- read_csv('processedStationData/draft2020data/RegionalResultsRiverine_BRRO_NOMISSINGDATA.csv') %>%
   # fix periods in column names from excel
-  as_tibble() %>%
-  dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance")
+  as_tibble()# %>%
+  #dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance") # may need this step but also may not
+
 ```
 
 
@@ -60,7 +70,7 @@ Now that we have all the data we need to run the assessment, we need to reorgani
 
 conventionals_HUC<- left_join(conventionals, dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, 
                                                            SPSTDS, ID305B_1, ID305B_2, ID305B_3,
-                                                           STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3), by='FDT_STA_ID') %>%
+                                                           STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin), by='FDT_STA_ID') %>%
   left_join(WQSvalues, by = 'CLASS')
 
 ```
@@ -103,12 +113,12 @@ for(i in 1:nrow(stationTable)){
                                bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
                                  dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
                                metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
-                                                   dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'),
+                                                 dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'),
                                acuteNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
                                  dplyr::select(AcuteAmmonia_VIO, AcuteAmmonia_STAT) %>% 
                                  dplyr::rename('WAT_TOX_VIO' ='AcuteAmmonia_VIO','WAT_TOX_STAT' = 'AcuteAmmonia_STAT'),
                                metalsExceedances(filter(Smetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
-                                                   dplyr::select(`ACENAPHTHENE`:ZINC), 'SED_MET') %>%
+                                                 dplyr::select(ARSENIC:ZINC), 'SED_MET') %>%
                                  dplyr::select(-ends_with('exceedanceRate')),
                                data.frame(SED_TOX_VIO='Not Analyzed by App', SED_TOX_STAT='Not Analyzed by App'),# Placeholder for sediment toxics
                                data.frame(FISH_MET_VIO='Not Analyzed by App', FISH_MET_STAT='Not Analyzed by App'), # Placeholder for fish metals
@@ -131,8 +141,8 @@ Last thing, to help assessors speed up comment process and help identify where d
 
 ```{r attach previous cycle comments}
 stationTableResultsWithComments <- left_join(stationTableResults, 
-                                             select(stationTable, STATION_ID, Notes), by = 'STATION_ID') %>%
-  rename('Last Cycle Comment' = 'Notes')
+                                             select(stationTable, STATION_ID, COMMENTS), by = 'STATION_ID') %>%
+  rename('COMMENTS' = 'COMMENTS.x','Last Cycle Comment' = 'COMMENTS.y')
 ```
 
 
