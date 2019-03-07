@@ -264,8 +264,8 @@ TPexceed <- function(x){
 #### Chl a semi Assessment Functions ---------------------------------------------------------------------------------------------------
 
 countchla <- function(x){
-  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME,PHOSPHORUS)%>% # Just get relevant columns
-    filter(!is.na(PHOSPHORUS)) %>% #get rid of NA's
+  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME,CHLOROPHYLL)%>% # Just get relevant columns
+    filter(!is.na(CHLOROPHYLL)) %>% #get rid of NA's
     summarize(NUT_CHLA_VIO= NA, NUT_CHLA_SAMP= n(), NUT_CHLA_STAT= NA)
 }
 
@@ -303,7 +303,7 @@ bacteria_Assessment_OLD <- function(x, bacteriaType, geomeanLimit, STVlimit){
       distinct(sampleMonthYear, .keep_all = T) %>%
       filter(samplesPerMonth > 4, geoMeanCalendarMonth > limit) %>% # minimum sampling rule for geomean to apply
       mutate(exceeds = TRUE) %>%
-      select(sampleMonthYear, geoMeanCalendarMonth, limit, exceeds, samplesPerMonth)
+      dplyr::select(sampleMonthYear, geoMeanCalendarMonth, limit, exceeds, samplesPerMonth)
     geomeanResults <- quickStats(bacteriaGeomean, bacteriaType) %>%
       mutate(`Assessment Method` = 'Old Monthly Geomean')
     geomeanResults[,4] <- ifelse(is.na(geomeanResults[,4]),NA, dplyr::recode(geomeanResults[,4], 'Review' = paste('Review if ', bacteriaType,'_VIO > 1',sep='')))
@@ -587,4 +587,49 @@ metalsExceedances <- function(x, metalType){
   x <- data.frame(VIO = VIO, STAT = ifelse(VIO > 0, 'Review', 'S'))
   names(x) <- paste(metalType,names(x), sep='_')
   return(x)
+}
+
+
+# New bacteria station table function
+
+bacteriaExceedances_NEW <- function(stationData,bacteriaType, sampleRequirement, STV, geomeanCriteria){
+  # get assessment
+  z <- bacteriaAssessmentDecision(conventionalsToBacteria(stationData, bacteriaType), sampleRequirement, STV, geomeanCriteria)  %>%
+    distinct(`Assessment Decision`)  # only grab 1 record
+  
+  if(is.na(z$`Assessment Decision`)){
+    nSTVExceedances <- NA
+    nGeomeanExceedances <- NA
+    decision <- NA
+  } else {
+    # Get assessment
+    if(str_detect( z$`Assessment Decision`, 'Insufficient Information')){decision <- 'IN'}
+    if(str_detect( z$`Assessment Decision`, 'Impaired')){decision <- 'Review'}
+    if(str_detect( z$`Assessment Decision`, 'Fully Supporting')) {decision <- 'FS'}
+    if(str_detect( z$`Assessment Decision`, 'Observed effect')) {decision <- 'Review'} # put this last to capture any OE's
+    
+    # Samples taken in most recent 2 years
+    y <- bacteriaExceedances_NewStd(conventionalsToBacteria(stationData, bacteriaType), sampleRequirement, STV, geomeanCriteria) 
+    # what are the last two years sampled? They get a bit of priority
+    last2years <- sort(unique(year(y$`Date Window Starts`)), TRUE)[1:2]
+    x <- filter(y, (year(y$`Date Window Starts`) %in% last2years))
+    nonOverlappingExceedanceResults <- nonOverlappingIntervals(x, TRUE, last2years)
+    
+    nSTVExceedances <- nrow(filter(nonOverlappingExceedanceResults, `Window Within Recreation Season` == TRUE & `STV Exceedance Rate` > 10.5 &
+                                     `STV Exceedances In Window` > 1))
+    nGeomeanExceedances <- nrow(filter(nonOverlappingExceedanceResults, `Window Within Recreation Season` == TRUE & 
+                                         `Samples in 90 Day Window` >= sampleRequirement &
+                                         `Geomean In Window` > geomeanCriteria))
+    
+  }
+  
+  s <- data.frame(STV_VIO = nSTVExceedances, GEOMEAN_VIO = nGeomeanExceedances, STAT_NEW = decision)
+  names(s) <- if(bacteriaType == 'ENTEROCOCCI'){
+    paste("ENTER", names(s), sep='_')} else {paste(bacteriaType, names(s), sep='_')}
+  names(s) <- gsub('[.]','',names(s))
+  
+  return(s)
+  
+ 
+  
 }

@@ -194,11 +194,9 @@ shinyServer(function(input, output, session) {
       t() %>% as.data.frame() %>% rename(`Station Information From Last Cycle` = 1)
     DT::datatable(z, options= list(pageLength = nrow(z), scrollY = "250px", dom='t'))  })
   
-  
-  
   ## Station Table View Section
   observe(siteData$StationTablePrelimStuff <- StationTableStartingData(stationData()))
-  
+ 
   observe(siteData$StationTableResults1 <- cbind(tempExceedances(stationData()), 
                                                  DOExceedances_Min(stationData()), pHExceedances(stationData()),
                                                  bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData(), 'E.COLI', 126, 235),'E.COLI') %>% 
@@ -212,7 +210,6 @@ shinyServer(function(input, output, session) {
                                                  metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData()$FDT_STA_ID) %>% 
                                                                      dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'))%>%
             dplyr::select(-ends_with('exceedanceRate')))
-  
   
   output$stationTableDataSummary <- DT::renderDataTable({
     req(stationData())
@@ -242,8 +239,8 @@ shinyServer(function(input, output, session) {
                             # hide certain columns
                             #columnDefs = list(list(targets = 6, visible = FALSE)),
                             dom='Bt', buttons=list('copy',
-                                                   list(extend='csv',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep='')),
-                                                   list(extend='excel',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep=''))))) %>% 
+                                                    list(extend='csv',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep='')),
+                                                    list(extend='excel',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep=''))))) %>% 
       formatStyle(c('TEMP_SAMP','TEMP_VIO','TEMP_STAT'), 'TEMP_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
       formatStyle(c('DO_SAMP','DO_VIO','DO_STAT'), 'DO_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
       formatStyle(c('PH_SAMP','PH_VIO','PH_STAT'), 'PH_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
@@ -265,18 +262,20 @@ shinyServer(function(input, output, session) {
       
     } else {
       PWSconcat <- cbind(data.frame(STATION_ID = unique(stationData()$FDT_STA_ID)),
-                         nitratePWS(stationData()),
-                         chloridePWS(stationData()),
-                         TSulfatePWS(stationData())) %>%
-        dplyr::select(-ends_with('exceedanceRate'))
-      
-      DT::datatable(PWSconcat, escape=F, rownames = F, options= list(scrollX = TRUE, pageLength = nrow(PWSconcat), dom='t')) %>% 
-        formatStyle(c("PWS_Acute_Nitrate_VIO","PWS_Acute_Nitrate_SAMP","PWS_Acute_Nitrate_STAT"), "PWS_Acute_Nitrate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
-        formatStyle(c("PWS_Acute_Chloride_VIO","PWS_Acute_Chloride_SAMP","PWS_Acute_Chloride_STAT"), "PWS_Acute_Chloride_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
-        formatStyle(c("PWS_Acute_Total_Sulfate_VIO","PWS_Acute_Total_Sulfate_SAMP","PWS_Acute_Total_Sulfate_STAT"), "PWS_Acute_Total_Sulfate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) 
-    }
+                           nitratePWS(stationData()),
+                           chloridePWS(stationData()),
+                           TSulfatePWS(stationData())) %>%
+          dplyr::select(-ends_with('exceedanceRate'))
+        
+        DT::datatable(PWSconcat, escape=F, rownames = F, options= list(scrollX = TRUE, pageLength = nrow(PWSconcat), dom='t')) %>% 
+          formatStyle(c("PWS_Acute_Nitrate_VIO","PWS_Acute_Nitrate_SAMP","PWS_Acute_Nitrate_STAT"), "PWS_Acute_Nitrate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+          formatStyle(c("PWS_Acute_Chloride_VIO","PWS_Acute_Chloride_SAMP","PWS_Acute_Chloride_STAT"), "PWS_Acute_Chloride_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+          formatStyle(c("PWS_Acute_Total_Sulfate_VIO","PWS_Acute_Total_Sulfate_SAMP","PWS_Acute_Total_Sulfate_STAT"), "PWS_Acute_Total_Sulfate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) 
+        }
     
   })
+
+  
   
   
   
@@ -352,7 +351,7 @@ shinyServer(function(input, output, session) {
   
   ## Chloride Sub Tab ##------------------------------------------------------------------------------------------------------
   callModule(ClPlotlySingleStation,'Cl', AUData, stationSelected)
-  
+   
   ## Sulfate Sub Tab ##------------------------------------------------------------------------------------------------------
   callModule(DSulfatePlotlySingleStation,'DSulfate', AUData, stationSelected)
   
@@ -365,7 +364,6 @@ shinyServer(function(input, output, session) {
   
   #### Metals Sub Tab ####---------------------------------------------------------------------------------------------------
   callModule(metalsTableSingleStation,'metals', AUData, WCmetals ,Smetals, stationSelected)
-  
   
   
   

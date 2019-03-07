@@ -78,4 +78,10 @@ R&S_app_v2/data/
 R&S_app_v2/appModules_Testing/
 stationTableResults2019-02-20.csv
 R&S_portableApp_v2/
-
+Riverine_portableApp_v1.zip
+Riverine_portableApp_v2.zip
+preprocessingWorkday/data/
+preprocessingWorkday/GIS/
+preprocessingWorkday/snappingFunctions/
+preprocessingWorkday/processedStationData/
+preprocessingWorkday.zip

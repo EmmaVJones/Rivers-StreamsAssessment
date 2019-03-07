@@ -100,7 +100,6 @@ EnteroPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
   
   output$EnteroexceedancesOldStdTableSingleSiteSTV <- DT::renderDataTable({
     req(Entero_oneStation())
-    print(Entero_oneStation())
     z <- bacteria_ExceedancesSTV_OLD(Entero_oneStation() %>%
                                        dplyr::select(FDT_DATE_TIME2,ENTEROCOCCI)%>% # Just get relavent columns, 
                                        filter(!is.na(ENTEROCOCCI)) #get rid of NA's
