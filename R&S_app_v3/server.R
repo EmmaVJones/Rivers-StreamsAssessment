@@ -5,18 +5,34 @@ source('AUshapefileLocation.R')
 
 
 # Draft 2020 data
-conventionals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190213.csv') %>%
+conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
   filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
-  rename('DO' = "DO_mg/L", "NITROGEN" = "NITROGEN_mg/L",  "AMMONIA" = "AMMONIA_mg/L" ,
-         #"NH3_DISS" = , "NH3_TOTAL"  , 
-         "PHOSPHORUS"= "PHOSPHORUS_mg/L" , "FECAL_COLI" = 'STORET_31616', "E.COLI" = 'ECOLI_CFU/100mL', 
-         "ENTEROCOCCI" = 'STORET_31649', "CHLOROPHYLL" = 'STORET_32211', "SSC" = "STORET_SSC-TOTAL" , 
-         "SSC_RMK" = "RMK_SSC-TOTAL" , "NITRATE" = "NITRATE_mg/L",  "CHLORIDE" = "CHLORIDE_mg/L" , 
-         "SULFATE_TOTAL" = "SULFATE_mg/L",   "SULFATE_DISS" = 'STORET_00946')
+  rename("FDT_TEMP_CELCIUS"  ="TEMPERATURE_00010_DEGREES CENTIGRADE",
+         "FDT_TEMP_CELCIUS_RMK" = "FDT_TEMP_CELCIUS_RMK",  
+         "FDT_FIELD_PH" = "pH_00400_STD_UNITS" ,          
+         "FDT_FIELD_PH_RMK"  ="FDT_FIELD_PH_RMK", 
+         "DO" =  "DO_mg/L",       
+         "DO_RMK"  ="DO_RMK",    
+         "FDT_SPECIFIC_CONDUCTANCE"="SPECIFIC_CONDUCTANCE_00095_UMHOS/CM @ 25C",    
+         "FDT_SPECIFIC_CONDUCTANCE_RMK" ="FDT_SPECIFIC_CONDUCTANCE_RMK" ,
+         "FDT_SALINITY" = "SALINITY_00480_PPT" ,            
+         "FDT_SALINITY_RMK"  ="FDT_SALINITY_RMK",  
+         "NITROGEN" = "NITROGEN_mg/L" ,                    
+         "AMMONIA" ="AMMONIA_mg/L",
+         "PHOSPHORUS" =  "PHOSPHORUS_mg/L",
+         "FECAL_COLI" = "FECAL_COLIFORM_31616_NO/100mL" ,
+         "E.COLI" = "ECOLI_CFU/100mL",                       
+         "ENTEROCOCCI" =  "ENTEROCOCCI_31649_NO/100mL",
+         "CHLOROPHYLL" ="CHLOROPHYLL_32211_ug/L",                
+         "SSC" ="SSC-TOTAL_00530_mg/L" , 
+         "NITRATE" ="NITRATE_mg/L", 
+         "CHLORIDE" ="CHLORIDE_mg/L",
+         "SULFATE_TOTAL" ="SULFATE_TOTAL_00945_mg/L",              
+         "SULFATE_DISS" ="SULFATE_DISSOLVED_00946_mg/L")
 conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
 
-WCmetals <- read_csv('data/draft2020data/CEDSWQM_2020_IR_DATA-WATER_METALS_VALUES_20190207_EVJ.csv')
-Smetals <- read_excel('data/draft2020data/CEDSWQM_2020_IR_DATA-CEDSWQM_SEDIMENT_20190213.xlsx') %>%
+WCmetals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-WATER_METALS_VALUES_20190207_EVJ.csv')
+Smetals <- read_excel('data/final2020data/CEDSWQM_2020_IR_DATA-CEDSWQM_SEDIMENT_20190213.xlsx') %>%
   dplyr::select(FDT_STA_ID:ZINC..70, COMMENT..89)
 names(Smetals) <- gsub( "[..].*", "", names(Smetals)) # remove anything after .. in name
 
@@ -24,7 +40,7 @@ names(Smetals) <- gsub( "[..].*", "", names(Smetals)) # remove anything after ..
 assessmentLayer <- st_read('GIS/AssessmentRegions_VA84_basins.shp') %>%
   st_transform( st_crs(4326)) 
 
-# Bring in latest EDAS VSCI and (combined) VCPMI queries
+# Bring in latest EDAS VSCI and (combined) VCPMI queries, not current for 2020 IR because biologists won't be finished IDing and entering bugs into EDAS until about MAY
 VSCI <- read_excel('data/Family Metrics VSCI Calculation.xlsx')%>%
   filter(RepNum == 1 & Target_Count == 110 &
            CollDate >= assessmentPeriod[1] )
@@ -194,9 +210,11 @@ shinyServer(function(input, output, session) {
       t() %>% as.data.frame() %>% rename(`Station Information From Last Cycle` = 1)
     DT::datatable(z, options= list(pageLength = nrow(z), scrollY = "250px", dom='t'))  })
   
+  
+  
   ## Station Table View Section
   observe(siteData$StationTablePrelimStuff <- StationTableStartingData(stationData()))
- 
+  
   observe(siteData$StationTableResults1 <- cbind(tempExceedances(stationData()), 
                                                  DOExceedances_Min(stationData()), pHExceedances(stationData()),
                                                  bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData(), 'E.COLI', 126, 235),'E.COLI') %>% 
@@ -210,6 +228,7 @@ shinyServer(function(input, output, session) {
                                                  metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData()$FDT_STA_ID) %>% 
                                                                      dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'))%>%
             dplyr::select(-ends_with('exceedanceRate')))
+  
   
   output$stationTableDataSummary <- DT::renderDataTable({
     req(stationData())
@@ -239,8 +258,8 @@ shinyServer(function(input, output, session) {
                             # hide certain columns
                             #columnDefs = list(list(targets = 6, visible = FALSE)),
                             dom='Bt', buttons=list('copy',
-                                                    list(extend='csv',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep='')),
-                                                    list(extend='excel',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep=''))))) %>% 
+                                                   list(extend='csv',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep='')),
+                                                   list(extend='excel',filename=paste('AssessmentResults_',paste(assessmentCycle,input$stationSelection, collapse = "_"),Sys.Date(),sep=''))))) %>% 
       formatStyle(c('TEMP_SAMP','TEMP_VIO','TEMP_STAT'), 'TEMP_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
       formatStyle(c('DO_SAMP','DO_VIO','DO_STAT'), 'DO_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
       formatStyle(c('PH_SAMP','PH_VIO','PH_STAT'), 'PH_STAT', backgroundColor = styleEqual(c('Review', '10.5% Exceedance'), c('yellow','red'))) %>%
@@ -262,20 +281,18 @@ shinyServer(function(input, output, session) {
       
     } else {
       PWSconcat <- cbind(data.frame(STATION_ID = unique(stationData()$FDT_STA_ID)),
-                           nitratePWS(stationData()),
-                           chloridePWS(stationData()),
-                           TSulfatePWS(stationData())) %>%
-          dplyr::select(-ends_with('exceedanceRate'))
-        
-        DT::datatable(PWSconcat, escape=F, rownames = F, options= list(scrollX = TRUE, pageLength = nrow(PWSconcat), dom='t')) %>% 
-          formatStyle(c("PWS_Acute_Nitrate_VIO","PWS_Acute_Nitrate_SAMP","PWS_Acute_Nitrate_STAT"), "PWS_Acute_Nitrate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
-          formatStyle(c("PWS_Acute_Chloride_VIO","PWS_Acute_Chloride_SAMP","PWS_Acute_Chloride_STAT"), "PWS_Acute_Chloride_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
-          formatStyle(c("PWS_Acute_Total_Sulfate_VIO","PWS_Acute_Total_Sulfate_SAMP","PWS_Acute_Total_Sulfate_STAT"), "PWS_Acute_Total_Sulfate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) 
-        }
+                         nitratePWS(stationData()),
+                         chloridePWS(stationData()),
+                         TSulfatePWS(stationData())) %>%
+        dplyr::select(-ends_with('exceedanceRate'))
+      
+      DT::datatable(PWSconcat, escape=F, rownames = F, options= list(scrollX = TRUE, pageLength = nrow(PWSconcat), dom='t')) %>% 
+        formatStyle(c("PWS_Acute_Nitrate_VIO","PWS_Acute_Nitrate_SAMP","PWS_Acute_Nitrate_STAT"), "PWS_Acute_Nitrate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+        formatStyle(c("PWS_Acute_Chloride_VIO","PWS_Acute_Chloride_SAMP","PWS_Acute_Chloride_STAT"), "PWS_Acute_Chloride_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+        formatStyle(c("PWS_Acute_Total_Sulfate_VIO","PWS_Acute_Total_Sulfate_SAMP","PWS_Acute_Total_Sulfate_STAT"), "PWS_Acute_Total_Sulfate_STAT", backgroundColor = styleEqual(c('Review'), c('red'))) 
+    }
     
   })
-
-  
   
   
   
@@ -351,7 +368,7 @@ shinyServer(function(input, output, session) {
   
   ## Chloride Sub Tab ##------------------------------------------------------------------------------------------------------
   callModule(ClPlotlySingleStation,'Cl', AUData, stationSelected)
-   
+  
   ## Sulfate Sub Tab ##------------------------------------------------------------------------------------------------------
   callModule(DSulfatePlotlySingleStation,'DSulfate', AUData, stationSelected)
   
@@ -364,6 +381,7 @@ shinyServer(function(input, output, session) {
   
   #### Metals Sub Tab ####---------------------------------------------------------------------------------------------------
   callModule(metalsTableSingleStation,'metals', AUData, WCmetals ,Smetals, stationSelected)
+  
   
   
   

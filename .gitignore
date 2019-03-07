@@ -85,3 +85,7 @@ preprocessingWorkday/GIS/
 preprocessingWorkday/snappingFunctions/
 preprocessingWorkday/processedStationData/
 preprocessingWorkday.zip
+R&S_app_v3/GIS/
+R&S_app_v3/data/
+R&S_app_v3/appModules_Testing/
+R&S_app_v3/processedStationData/
