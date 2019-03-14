@@ -17,6 +17,7 @@ suppressPackageStartupMessages(library(mapview))
 suppressPackageStartupMessages(library(leaflet))
 suppressPackageStartupMessages(library(miniUI))
 suppressPackageStartupMessages(library(DT))
+suppressPackageStartupMessages(library(RColorBrewer))
 
 source('snappingFunctions/snapFunctions.R') # snapping functions
 source('snappingFunctions/snapOrganizationFunctions_v2.R') # functions to do stuff with snapping functions
@@ -99,7 +100,7 @@ conventionals_D_Region <- st_join(conventionals_D, assessmentLayerSelection, joi
   dplyr::select(FDT_STA_ID:STA_CBP_NAME, Basin, VAHU6, sameVAHU6) %>% # just get columns we are interested in, compare here if desired
   dplyr::select(FDT_STA_ID:STA_CBP_NAME,Basin) # get rid of the extra VAHU6 columns
 
-rm(conventionals_D); rm(assessmentLayer) # clean up workspace
+#rm(conventionals_D); rm(assessmentLayer) # clean up workspace
 
 cat(paste('Below are the ',nrow(conventionals_D_Region),' unique stations in the ', unique(assessmentLayerSelection$ASSESS_REG),' region.', sep=''))
 ```
@@ -109,6 +110,73 @@ cat(paste('Below are the ',nrow(conventionals_D_Region),' unique stations in the
 DT::datatable(conventionals_D_Region, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(conventionals_D_Region)
 ```
+
+### Assessment Layer QA
+
+We need to consider additional stations from the conventionals_D dataset that may not have made it into the conventionals_D_Region dataframe because:
+- stations lat long may be just outside state boundary
+- station may fall into different regional boundary but because of regional agreements the assessment/monitoring responsibilities may fall to a different region than the one the lat/long actually falls into
+
+To verify that we have not accidentally filtered out any stations that an assessor may be responsible for, we will visually inspect the clipped dataset now using an interactive map. The stations that have been filtered to the input region will appear in blue. By toggling on the conventionals_D dataset, assessors can verify there are no stations accidentally dropped that they know they are in fact responsible for. To access this layer, hover the mouse on the button beneath the zoom buttons on the top left of the map. Checkboxes enabe you to turn layers on/off. Additionally, the regional subset and statewide assessment layers can be plotted on the map by using the same drop down under the zoom buttong in the top right corner of the map.
+
+```{r stationMap, echo=F}
+mapviewOptions(basemaps = c( "OpenStreetMap",'Esri.WorldImagery'),
+               vector.palette = colorRampPalette(brewer.pal(3, "Set1")),
+               na.color = "magenta",
+               legend=FALSE)
+
+leaflet(conventionals_D_Region) %>% 
+      addProviderTiles(providers$Esri.NatGeoWorldMap,group='Nat Geo World Map') %>%
+      addProviderTiles(providers$Esri.WorldImagery,group='Esri World Imagery') %>%
+      addProviderTiles(providers$OpenStreetMap,group='Open Street Map') %>%
+      setView(-79.781392, 38.1927009, zoom=7) %>%
+  addPolygons(data=assessmentLayerSelection,color='black',fillColor='blue', fillOpacity = 0.5,weight=2, stroke=T,
+              group="Selected Assessment Region",
+                  popup=popupTable(assessmentLayerSelection, zcol=c("HUC12","VAHU6","ASSESS_REG","Location",
+                                                                 "VaName","PC_Water","Tidal","VAHU5"  ))) %>%
+  addPolygons(data=assessmentLayer,color='navy',fill=0.9,stroke=0.1,group="Statewide Assessment Layer",
+                  popup=popupTable(assessmentLayer, zcol=c("HUC12","VAHU6","ASSESS_REG","Location",
+                                                                 "VaName","PC_Water","Tidal","VAHU5"  ))) %>% 
+  hideGroup('Statewide Assessment Layer') %>%
+  addCircleMarkers(data=conventionals_D_Region,color='yellow', fillColor='blue', radius = 5,
+                   fillOpacity = 0.5,opacity=1,weight = 2,stroke=T,group="conventionals_D_Region",
+                   popup=popupTable(conventionals_D_Region, zcol=c("FDT_STA_ID","STA_DESC","Deq_Region","STA_REC_CODE",
+                                                  "FDT_SSC_CODE","FDT_SPG_CODE","Huc6_Huc_8","Huc6_Huc_8_Name",
+                                                  "Huc6_Name","Huc6_Vahu5","Huc6_Huc_12","Huc6_Huc_12_Name","Huc6_Vahu6",
+                                                  "STA_LV1_CODE","LV1_DESCRIPTION","STA_LV2_CODE","LV2_DESCRIPTION",
+                                                  "STA_LV3_CODE","LV3_DESCRIPTION","STA_CBP_NAME","Basin"))) %>%
+  addCircleMarkers(data=conventionals_D,color='red', fillColor='red', radius = 4,
+                   fillOpacity = 0.5,opacity=1,weight = 0,stroke=T,group="conventionals_D",
+                   popup=popupTable(conventionals_D_Region, zcol=c("FDT_STA_ID","STA_DESC","Deq_Region","STA_REC_CODE",
+                                                  "FDT_SSC_CODE","FDT_SPG_CODE","Huc6_Huc_8","Huc6_Huc_8_Name",
+                                                  "Huc6_Name","Huc6_Vahu5","Huc6_Huc_12","Huc6_Huc_12_Name","Huc6_Vahu6",
+                                                  "STA_LV1_CODE","LV1_DESCRIPTION","STA_LV2_CODE","LV2_DESCRIPTION",
+                                                  "STA_LV3_CODE","LV3_DESCRIPTION","STA_CBP_NAME","Basin"))) %>%
+  hideGroup('conventionals_D') %>%
+  addLayersControl(baseGroups=c('Nat Geo World Map','Esri World Imagery','Open Street Map'),
+                       overlayGroups = c('conventionals_D_Region','conventionals_D',
+                                         'Selected Assessment Region','Statewide Assessment Layer'),
+                       options=layersControlOptions(collapsed=T),
+                       position='topleft')
+      
+```
+
+
+If you identify stations that are not in your conventionals_D_Region layer but need to be assessed by your region, now is the time to correct the error. In the chunk below, you will be given an chance to add any stations (called by FDT_STA_ID) back to the conventionals_D_Region object. Simply analyze the map for any missing stations (turn on conventionals_D layer and click desired station) and copy/paste the FDT_STA_ID **IN QUOTES** into the filter argument. Be sure to separate FDT_STA_ID arguments by a comma. There is an example provided below for your reference. 
+
+After you have completed adding all FDT_STA_ID's to the filter statement, press the 'Play' button on the top right of the chunk and the code will be executed for you. The desired stations will be added back to the conventionals_D_Region object for further processing steps.
+
+```{r conventionals_D_Region adjustments}
+
+conventionals_D_add <- filter(conventionals_D, FDT_STA_ID %in% c(''))
+#conventionals_D_add <- filter(conventionals_D, FDT_STA_ID %in% c('STATIONID_1','STATIONID_2','STATIONID_3')) # example filter statement
+
+conventionals_D <- bind_rows(conventionals_D, conventionals_D_add)
+
+rm(assessmentLayer);rm(conventionals_D)
+
+```
+
 
 
 #### Last Cycle Estuary Assessment Layer
@@ -159,28 +227,31 @@ The next step uses the 2018 IR station table as a starting point for linking the
 ## When 2018 is published it iwll look something like X:\2016_Assessment\GIS_2016\MonitoringStations\ir_mon_stations_2016_FINAL.mdb
 
 
-stationTable <- read_excel('data/2018_ir_mon_stations_SWRO.xlsx') %>%
-  dplyr::rename("ID305B_1" = "AU ID #1", 'ID305B_2' = "AU ID #2", 'ID305B_3' = "AU ID #3", 
-                "DEPTH" = "Depth", "STATION_ID" = "Station ID", 
-                "STATION_TYPE_1" = "Station Type #1", "STATION_TYPE_2" = "Station Type #2",
-                "STATION_TYPE_3" = "Station Type #3", "STATION_LAT" = "Station Lat.",
-                "STATION_LON" = "Station Lon." , "WATERSHED_ID" = "Watershed", 
-                "TEMP_VIO" = "Temp. Exc.",  "TEMP_SAMP" = "Temp.Sam.",  "TEMP_STAT" = "Temperature Status",
-                "DO_VIO" ="DO Exc." ,  "DO_SAMP" ="DO Sam." , "DO_STAT" ="DO Status",
-                "PH_VIO" ="pH Exc.", "PH_SAMP" ="pH Sam.", "PH_STAT" ="pH Status",
-                "ECOLI_VIO" ="eColi Exc." ,  "ECOLI_SAMP" = "eColi Sam." , "ECOLI_STAT"= "eColi Status" ,
-                "ENTER_VIO" ="Entero. Exc.",  "ENTER_STAT" = "Enterococci Status",
-                "WAT_MET_VIO" ="Metals Exc...21",   "WAT_MET_STAT" = "Metals Status..22", 
-                "WAT_TOX_VIO" ="Toxics Exc...23", "WAT_TOX_STAT" = "Toxics Status..24",
-                "SED_MET_VIO" = "Metals Exc...25",   "SED_MET_STAT" =  "Metals Status..26", 
-                "SED_TOX_VIO" ="Toxics Exc...27",    "SED_TOX_STAT" ="Toxics Status..28",
-                "FISH_MET_VIO" =  "Metals Exc...29" , "FISH_MET_STAT" = "Metals Status..30",
-                "FISH_TOX_VIO" = "Toxics Exc...31",  "FISH_TOX_STAT" ="Toxics Status..32" ,
-                "BENTHIC_STAT" = "Benthics Status", "NUT_TP_VIO" ="TP Exc.",    
-                "NUT_TP_SAMP" = "TP Sam." ,   "NUT_TP_STAT" ="Total Phosphorus Status",
-                "NUT_CHLA_VIO" ="Chl A Exc.",  "NUT_CHLA_SAMP" ="Chl A Sam.", 
-                "NUT_CHLA_STAT" = "Chlorophyll A Status", "COMMENTS" = "Station Comments") %>%
-  mutate( REGION = 'SWRO', ENTER_SAMP = NA)
+#stationTable <- read_excel('data/2018_ir_mon_stations_SWRO.xlsx') %>%
+#  dplyr::rename("ID305B_1" = "AU ID #1", 'ID305B_2' = "AU ID #2", 'ID305B_3' = "AU ID #3", 
+#                "DEPTH" = "Depth", "STATION_ID" = "Station ID", 
+#                "STATION_TYPE_1" = "Station Type #1", "STATION_TYPE_2" = "Station Type #2",
+#                "STATION_TYPE_3" = "Station Type #3", "STATION_LAT" = "Station Lat.",
+#                "STATION_LON" = "Station Lon." , "WATERSHED_ID" = "Watershed", 
+#                "TEMP_VIO" = "Temp. Exc.",  "TEMP_SAMP" = "Temp.Sam.",  "TEMP_STAT" = "Temperature Status",
+#                "DO_VIO" ="DO Exc." ,  "DO_SAMP" ="DO Sam." , "DO_STAT" ="DO Status",
+#                "PH_VIO" ="pH Exc.", "PH_SAMP" ="pH Sam.", "PH_STAT" ="pH Status",
+#                "ECOLI_VIO" ="eColi Exc." ,  "ECOLI_SAMP" = "eColi Sam." , "ECOLI_STAT"= "eColi Status" ,
+#                "ENTER_VIO" ="Entero. Exc.",  "ENTER_STAT" = "Enterococci Status",
+#                "WAT_MET_VIO" ="Metals Exc...21",   "WAT_MET_STAT" = "Metals Status..22", 
+#                "WAT_TOX_VIO" ="Toxics Exc...23", "WAT_TOX_STAT" = "Toxics Status..24",
+#                "SED_MET_VIO" = "Metals Exc...25",   "SED_MET_STAT" =  "Metals Status..26", 
+#                "SED_TOX_VIO" ="Toxics Exc...27",    "SED_TOX_STAT" ="Toxics Status..28",
+#                "FISH_MET_VIO" =  "Metals Exc...29" , "FISH_MET_STAT" = "Metals Status..30",
+#                "FISH_TOX_VIO" = "Toxics Exc...31",  "FISH_TOX_STAT" ="Toxics Status..32" ,
+#                "BENTHIC_STAT" = "Benthics Status", "NUT_TP_VIO" ="TP Exc.",    
+#                "NUT_TP_SAMP" = "TP Sam." ,   "NUT_TP_STAT" ="Total Phosphorus Status",
+#                "NUT_CHLA_VIO" ="Chl A Exc.",  "NUT_CHLA_SAMP" ="Chl A Sam.", 
+#                "NUT_CHLA_STAT" = "Chlorophyll A Status", "COMMENTS" = "Station Comments") %>%
+#  mutate( REGION = 'SWRO', ENTER_SAMP = NA)
+
+# Bring in EVJ edited stations table
+stationTable <- read_csv('data/2018_ir_mon_stations_SWRO_EVJ.csv')
 
 # Reorganize columns to match Cleo's system
 cleo <- read_excel('data/tbl_ir_mon_stations_template.xlsx')

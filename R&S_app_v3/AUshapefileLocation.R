@@ -9,5 +9,5 @@
 #         default path break notation.
 
 #regionalAUs <- st_read('GIS/AU_BRRO_2016_WGS84.shp')
-regionalAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_riverineBRRO.shp') %>%
+regionalAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_riverineSWRO.shp') %>%
   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection

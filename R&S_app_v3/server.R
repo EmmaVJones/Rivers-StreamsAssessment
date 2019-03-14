@@ -76,7 +76,8 @@ shinyServer(function(input, output, session) {
     read_csv(inFile$datapath) %>%
    #fix periods in column names from excel
     as_tibble() %>%
-    dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance")
+    dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance") %>%
+      mutate(VAHU6 = ifelse(is.na(VAHU6), Huc6_Vahu6, VAHU6)) # station table fix if necessary
   })
   
  
@@ -124,10 +125,14 @@ shinyServer(function(input, output, session) {
   
   output$AUmap <- renderLeaflet({
     req(region_filter(), basin_filter(), huc6_filter())
+    
+    z <- AUs()
+    z$ID305B <- factor(z$ID305B) # drop extra factor levels so colors come out right
+    
     m <- mapview(huc6_filter(), color = 'yellow',lwd= 5, label= NULL, layer.name = c('Selected HUC6'),
                  popup= popupTable(huc6_filter(), zcol=c('VAHU6',"VaName","VAHU5","ASSESS_REG"))) + 
-      mapview(AUs(), label= AUs()$ID305B, layer.name = c('AUs in Selected HUC6'), zcol = "ID305B", legend=FALSE,
-              popup= popupTable(AUs(), zcol=c("ID305B","MILES","CYCLE","WATER_NAME","LOCATION" )))
+      mapview(z, label= z$ID305B, layer.name = c('AUs in Selected HUC6'), zcol = "ID305B", legend=FALSE,
+              popup= popupTable(z, zcol=c("ID305B","MILES","CYCLE","WATER_NAME","LOCATION" )))
     m@map })
   
   
