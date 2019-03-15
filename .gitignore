@@ -94,3 +94,6 @@ preprocessingRegionalData/GIS/
 preprocessingRegionalData/preprocessedStationData/
 preprocessingRegionalData/snappingFunctions/
 preprocessingRegionalData.zip
+
+bacteriaAssessmentModule/bacteriaAssessmentModule_portable/
+bacteriaAssessmentModule/data/
