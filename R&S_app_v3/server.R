@@ -156,6 +156,24 @@ shinyServer(function(input, output, session) {
   
   # Pull Conventionals data for selected AU on click
   conventionals_HUC <- eventReactive( input$pullHUCdata, {
+    
+    if("II" %in% unique(stationTable()$CLASS)){
+      stationTable1 <- dplyr::select(stationTable(), FDT_STA_ID, SEC, CLASS, 
+                                     SPSTDS, ID305B_1, ID305B_2, ID305B_3,
+                                     STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin) %>%
+        left_join(WQSvalues, by = 'CLASS') %>%
+        mutate(`Dissolved Oxygen Min (mg/L)` = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA,`Dissolved Oxygen Min (mg/L)`),
+               `Dissolved Oxygen Daily Avg (mg/L)`  = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA, `Dissolved Oxygen Daily Avg (mg/L)`)) %>%
+        #mutate(`Dissolved Oxygen Min (mg/L)` = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA,
+        #       `Dissolved Oxygen Daily Avg (mg/L)`  = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA)) %>%
+        distinct(FDT_STA_ID, .keep_all = T)
+    
+      
+      conventionals_HUC<- left_join(conventionals, stationTable1, by = "FDT_STA_ID")
+      return(conventionals_HUC)
+    }
+    
+    
     z <- filter(conventionals, Huc6_Vahu6 %in% huc6_filter()$VAHU6) %>%
       left_join(dplyr::select(stationTable(), FDT_STA_ID, SEC, CLASS, SPSTDS,PWS, ID305B_1, ID305B_2, ID305B_3,
                               STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin

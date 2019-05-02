@@ -1,0 +1,103 @@
+---
+title: "BRRO citmon"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(readxl))
+suppressPackageStartupMessages(library(sf))
+suppressPackageStartupMessages(library(leaflet))
+suppressPackageStartupMessages(library(mapview))
+```
+
+Bring in conventionals to compare citmon data to it for general formatting starting point
+
+```{r, conventionals}
+# too big to read in using read_excel
+conventionals <- read_csv('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
+  filter(!is.na(Latitude)|!is.na(Longitude)) # remove sites without coordinates
+conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M") # turn character date format into proper date time format
+
+```
+
+Bring in citmon data from James. 
+
+```{r citmon}
+# Bring in James' citizen dataset
+cit <- read_csv('2020IR Citizen Ambient4.14.19 (2).csv') %>%
+  dplyr::select(Group_Station_ID:`DEQ QA Comments`) # drop junk columns
+#nonA <-  readxl::read_excel('CitizenNonAgency/2020IR NONA ambient.xlsx')
+
+```
+
+work with spatial aspect, play with different ways of getting unique identifiers- group station Id (citizen assigned) and lat/long combos
+
+```{r}
+
+# Count occurrences of each Group_Station_ID
+cit1 <- dplyr::select(cit, Group_Station_ID, FDT_STA_ID, STA_DESC, Latitude, Longitude)
+
+citCounts <- cit1 %>% 
+  group_by(Group_Station_ID, Latitude, Longitude) %>%
+  summarize(`Number of Station Sampling Events` = n())
+
+citDetailscit <- cit1 %>% 
+  group_by(Group_Station_ID, Latitude, Longitude) %>%
+  mutate(`Number of Station Sampling Events` = n(),
+         STA_DESC_norm = str_replace_all(STA_DESC, "[^[:alnum:]]", " ")) %>%
+  ungroup() %>%
+  distinct() %>%
+  arrange(Group_Station_ID) 
+citDetailscit$rowname <- c(1:nrow(citDetailscit))
+# ugly addition singe add_rownames() alter data type
+
+
+missingLocation <- filter(citDetailscit, is.na(Latitude) | is.na(Longitude) | Latitude == 0 | Longitude == 0)
+
+citDetailscit_sf <- citDetailscit %>%
+  filter(!(rowname %in% missingLocation$rowname)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
+
+```
+
+
+Bring in assessment layer to get just things that fall into BRRO
+
+```{r assessment layer}
+assessmentLayer <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/AssessmentRegions_VA84_basins.shp') %>%
+  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == 'BRRO')
+
+citmon_D_Region <- st_join(citDetailscit_sf, assessmentLayerSelection, join = st_intersects) %>%
+  filter(!is.na(VAHU6)) %>% # only keep rows that joined
+  dplyr::select(rowname, everything())
+ 
+```
+
+Get raw citmon data together with just stations from BRRO.
+
+```{r join raw}
+citmonBRRO <- left_join(cit, citmon_D_Region, 
+                        by= c("Group_Station_ID","FDT_STA_ID",
+                              "STA_DESC","Latitude","Longitude" )) %>%
+  filter(!is.na(rowname))
+
+```
+
+
+
+Save for Mary and Paula in csv and shapefile formats
+```{r save}
+write.csv(citmon_D_Region, 'BRROdata/BRROuniqueCitMonStations.csv', row.names=FALSE)
+write.csv(citmonBRRO, 'BRROdata/BRROrawCitMonData.csv',row.names = FALSE)
+
+st_write(citmon_D_Region,'BRROdata/BRROuniqueCitMonStations.shp')
+
+```
+

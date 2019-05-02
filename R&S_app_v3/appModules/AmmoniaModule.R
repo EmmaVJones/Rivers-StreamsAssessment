@@ -8,7 +8,7 @@ AmmoniaPlotlySingleStationUI <- function(id){
       plotlyOutput(ns('Ammoniaplotly')),
       br(),hr(),br(),
       fluidRow(
-        column(8, h5('All ammonia records that are above the criteria for the ',span(strong('selected site')),' are highlighted below.'),
+        column(8, h5('All ammonia records that are above the acute criteria for the ',span(strong('selected site')),' are highlighted below.'),
                div(style = 'height:150px;overflow-y: scroll', tableOutput(ns('AmmoniaRangeTableSingleSite')))),
         column(4, h5('Individual ammonia exceedance statistics for the ',span(strong('selected site')),' are highlighted below.',span(strong('Note: the ammonia
                                                                                                                                              samples from the last consecutive three years of data collected are the only samples utilized for exceedance calculations.'))),

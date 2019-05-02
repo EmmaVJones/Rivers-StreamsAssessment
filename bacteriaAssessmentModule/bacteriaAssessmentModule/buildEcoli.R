@@ -4,7 +4,40 @@ source('newBacteriaStandard_workingUpdatedRecSeason.R')
 
 monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
 
+citBact <- read_csv('data/2020IR bacteriaCitizen.csv') %>% # had to convert James' .xlsx to .csv bc date time data weird
+  #fix data, only dealing with ecoli and enterococcus, every fucking name is different than non Agency...
+  mutate(Entity='Citizen',
+         FDT_STA_ID = `DEQ_Station_ID`, 
+         FDT_DATE_TIME = ifelse(is.na(`mon_time`),paste(`mon_date`,'00:00:00'), paste(`mon_date`,`mon_time`)),
+         #FDT_DEPTH = `Sample Depth m`, # apparently no depth information
+         E.COLI = `E_coli_Method`,
+         ENTEROCOCCI = `Enterococcus MPN/100ml`,
+         LEVEL = ifelse(is.na(`E_coli_Method`), `Enterococcus Method`, `E_coli_Method`),
+         QUALIFIER = ifelse(is.na(`Qualifier_E_coli`), `Qualifier Enterococcus`, `Qualifier_E_coli`)
+  )
 
+as.POSIXct(citBact$mon_date[1:10], format = '%m/%d/%Y')
+as.POSIXct(citBact$mon_time[1:10], format = '%H:%m:%S')
+as.POSIXct(strsplit(citBact$FDT_DATE_TIME[1:10],' ')[5][[1]][2], format = '%H:%M:%S')
+
+as.POSIXct(citBact$FDT_DATE_TIME[1:10], format = '%m/%d/%Y %H:%m:%S')
+nonABact <- read_csv('data/2020IR bacteriaNonAgency.csv') %>% # had to convert James' .xlsx to .csv bc date time data weird
+  #fix data, only dealing with ecoli and enterococcus 
+  mutate(Entity='NonAgency',
+         FDT_STA_ID = `DEQ Station ID`, 
+         FDT_DATE_TIME = ifelse(is.na(`mon time`),`mon date`, paste(`mon date`,`mon time`)),
+         FDT_DEPTH = `Sample Depth m`, # WTF?
+         E.COLI = `E coli 100ml`,
+         ENTEROCOCCI = `Enterococcus per 100ml`,
+         LEVEL = ifelse(is.na(`E coli Method`), `Enterococcus Method`, `E coli Method`),
+         QUALIFIER = ifelse(is.na(`Qualifier E coli`), `Qualifier Enterococcus`, `Qualifier E coli`)
+         )
+
+#nonABact$`mon date`[1:10]<- 
+as.POSIXct(nonABact$`mon date`[1:10],format = '%m/%D/%Y')
+
+conventionals <-  mutate(conventionals, Entity='Citizen')
+  
 # Single station data ----------------------------------------------------------------------
 
 x <-filter(conventionals, FDT_STA_ID %in% '2-JMS279.41')#'2-JMS282.28') 

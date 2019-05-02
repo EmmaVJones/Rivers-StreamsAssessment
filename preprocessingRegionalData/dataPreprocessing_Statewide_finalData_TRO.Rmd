@@ -30,7 +30,7 @@ This document demonstrates the necessary steps to get any regional office up to 
 ## Input data
 
 #### Conventionals
-Bring in Roger's conventionals dataset. Make it a csv immediately to speed up rendering in app. This is the draft 2020 IR data pull. This entire document will need to be rerun with the finalized 2020 IR dataset.
+Bring in Roger's conventionals dataset. I made it a csv before bringing it into RStudio to speed up rendering in app. 
 
 The conventionals dataset was first converted to a .csv in excel because my system struggled to read in entire dataset in .xlsx format.
 
@@ -60,7 +60,6 @@ rm(conventionals) # remove full conventionals dataset to save memory
 Below is the table output. For this cycle, there are `r nrow(conventionals_D)` unique stations sampled.
 
 ```{r conventionalsDistinctTable, echo=FALSE}
-DT::datatable(conventionals_D, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(conventionals_D)
 ```
 
@@ -85,8 +84,17 @@ unique(assessmentLayer$ASSESS_REG)
 
 Insert one of those unique codes in quotes into the chunk below. The commented out script serves as an example for you.
 
+```{r establish regionCode}
+
+regionCode <- 'PRO'
+#regionCode <- 'BRRO'
+```
+
+
+Now we subset the layer based on your regionCode variable. We will use this variable again later in script.
+
 ```{r DEQ region selection}
-assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == 'SWRO')
+assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == regionCode)
 #assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG ==    )
 #assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == 'BRRO')
 ```
@@ -107,7 +115,6 @@ cat(paste('Below are the ',nrow(conventionals_D_Region),' unique stations in the
 
 
 ```{r DistinctSitesInRegionTable, echo=FALSE}
-DT::datatable(conventionals_D_Region, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(conventionals_D_Region)
 ```
 
@@ -130,32 +137,54 @@ leaflet(conventionals_D_Region) %>%
       addProviderTiles(providers$Esri.WorldImagery,group='Esri World Imagery') %>%
       addProviderTiles(providers$OpenStreetMap,group='Open Street Map') %>%
       setView(-79.781392, 38.1927009, zoom=7) %>%
-  addPolygons(data=assessmentLayerSelection,color='black',fillColor='blue', fillOpacity = 0.5,weight=2, stroke=T,
+  addPolygons(data=assessmentLayerSelection,color='black',fillColor='blue', 
+              fillOpacity = 0.5,weight=2, stroke=T,
               group="Selected Assessment Region",
-                  popup=popupTable(assessmentLayerSelection, zcol=c("HUC12","VAHU6","ASSESS_REG","Location",
-                                                                 "VaName","PC_Water","Tidal","VAHU5"  ))) %>%
-  addPolygons(data=assessmentLayer,color='navy',fill=0.9,stroke=0.1,group="Statewide Assessment Layer",
-                  popup=popupTable(assessmentLayer, zcol=c("HUC12","VAHU6","ASSESS_REG","Location",
-                                                                 "VaName","PC_Water","Tidal","VAHU5"  ))) %>% 
+              popup=popupTable(assessmentLayerSelection, 
+                               zcol=c("HUC12","VAHU6","ASSESS_REG","Location",
+                                      "VaName","PC_Water","Tidal","VAHU5"  ))) %>%
+  addPolygons(data=assessmentLayer,color='navy',fill=0.9,stroke=0.1,
+              group="Statewide Assessment Layer",
+              popup=popupTable(assessmentLayer, 
+                               zcol=c("HUC12","VAHU6","ASSESS_REG","Location",
+                                      "VaName","PC_Water","Tidal","VAHU5"  ))) %>% 
   hideGroup('Statewide Assessment Layer') %>%
-  addCircleMarkers(data=conventionals_D_Region,color='yellow', fillColor='blue', radius = 5,
-                   fillOpacity = 0.5,opacity=1,weight = 2,stroke=T,group="conventionals_D_Region",
-                   popup=popupTable(conventionals_D_Region, zcol=c("FDT_STA_ID","STA_DESC","Deq_Region","STA_REC_CODE",
-                                                  "FDT_SSC_CODE","FDT_SPG_CODE","Huc6_Huc_8","Huc6_Huc_8_Name",
-                                                  "Huc6_Name","Huc6_Vahu5","Huc6_Huc_12","Huc6_Huc_12_Name","Huc6_Vahu6",
-                                                  "STA_LV1_CODE","LV1_DESCRIPTION","STA_LV2_CODE","LV2_DESCRIPTION",
-                                                  "STA_LV3_CODE","LV3_DESCRIPTION","STA_CBP_NAME","Basin"))) %>%
+  addCircleMarkers(data=conventionals_D_Region,color='yellow', 
+                   fillColor='blue', radius = 5,
+                   fillOpacity = 0.5,opacity=1,weight = 2,stroke=T,
+                   group="conventionals_D_Region",
+                   popup=popupTable(conventionals_D_Region,
+                                    zcol=c("FDT_STA_ID","STA_DESC",
+                                           "Deq_Region","STA_REC_CODE",
+                                           "FDT_SSC_CODE","FDT_SPG_CODE",
+                                           "Huc6_Huc_8","Huc6_Huc_8_Name",
+                                           "Huc6_Name","Huc6_Vahu5","Huc6_Huc_12",
+                                           "Huc6_Huc_12_Name","Huc6_Vahu6",
+                                           "STA_LV1_CODE","LV1_DESCRIPTION",
+                                           "STA_LV2_CODE","LV2_DESCRIPTION",
+                                           "STA_LV3_CODE","LV3_DESCRIPTION",
+                                           "STA_CBP_NAME","Basin"))) %>%
   addCircleMarkers(data=conventionals_D,color='red', fillColor='red', radius = 4,
-                   fillOpacity = 0.5,opacity=1,weight = 0,stroke=T,group="conventionals_D",
-                   popup=popupTable(conventionals_D_Region, zcol=c("FDT_STA_ID","STA_DESC","Deq_Region","STA_REC_CODE",
-                                                  "FDT_SSC_CODE","FDT_SPG_CODE","Huc6_Huc_8","Huc6_Huc_8_Name",
-                                                  "Huc6_Name","Huc6_Vahu5","Huc6_Huc_12","Huc6_Huc_12_Name","Huc6_Vahu6",
-                                                  "STA_LV1_CODE","LV1_DESCRIPTION","STA_LV2_CODE","LV2_DESCRIPTION",
-                                                  "STA_LV3_CODE","LV3_DESCRIPTION","STA_CBP_NAME","Basin"))) %>%
+                   fillOpacity = 0.5,opacity=1,weight = 0,stroke=T,
+                   group="conventionals_D",
+                   popup=popupTable(conventionals_D_Region, 
+                                    zcol=c("FDT_STA_ID","STA_DESC",
+                                           "Deq_Region","STA_REC_CODE",
+                                           "FDT_SSC_CODE","FDT_SPG_CODE",
+                                           "Huc6_Huc_8","Huc6_Huc_8_Name",
+                                          "Huc6_Name","Huc6_Vahu5","Huc6_Huc_12",
+                                          "Huc6_Huc_12_Name","Huc6_Vahu6",
+                                          "STA_LV1_CODE","LV1_DESCRIPTION",
+                                          "STA_LV2_CODE","LV2_DESCRIPTION",
+                                          "STA_LV3_CODE","LV3_DESCRIPTION",
+                                          "STA_CBP_NAME","Basin"))) %>%
   hideGroup('conventionals_D') %>%
-  addLayersControl(baseGroups=c('Nat Geo World Map','Esri World Imagery','Open Street Map'),
-                       overlayGroups = c('conventionals_D_Region','conventionals_D',
-                                         'Selected Assessment Region','Statewide Assessment Layer'),
+  addLayersControl(baseGroups=c('Nat Geo World Map','Esri World Imagery',
+                                'Open Street Map'),
+                       overlayGroups = c('conventionals_D_Region',
+                                         'conventionals_D', 
+                                         'Selected Assessment Region',
+                                         'Statewide Assessment Layer'),
                        options=layersControlOptions(collapsed=T),
                        position='topleft')
       
@@ -164,14 +193,22 @@ leaflet(conventionals_D_Region) %>%
 
 If you identify stations that are not in your conventionals_D_Region layer but need to be assessed by your region, now is the time to correct the error. In the chunk below, you will be given an chance to add any stations (called by FDT_STA_ID) back to the conventionals_D_Region object. Simply analyze the map for any missing stations (turn on conventionals_D layer and click desired station) and copy/paste the FDT_STA_ID **IN QUOTES** into the filter argument. Be sure to separate FDT_STA_ID arguments by a comma. There is an example provided below for your reference. 
 
-After you have completed adding all FDT_STA_ID's to the filter statement, press the 'Play' button on the top right of the chunk and the code will be executed for you. The desired stations will be added back to the conventionals_D_Region object for further processing steps.
+After you have completed adding all FDT_STA_ID's to the filter statement, press the 'Play'/'Run Current Chunk' button on the top right of the chunk and the code will be executed for you. The desired stations will be added back to the conventionals_D_Region object for further processing steps.
 
 ```{r conventionals_D_Region adjustments}
 
-conventionals_D_add <- filter(conventionals_D, FDT_STA_ID %in% c(''))
+##conventionals_D_add <- filter(conventionals_D, FDT_STA_ID %in% c('2CXCE000.02','2-WHC000.46')) 
+
+# '9-NEW107.50','9-NEW107.51','9-WFC017.31' were noted in an email exchange
 #conventionals_D_add <- filter(conventionals_D, FDT_STA_ID %in% c('STATIONID_1','STATIONID_2','STATIONID_3')) # example filter statement
 
-conventionals_D <- bind_rows(conventionals_D, conventionals_D_add)
+#conventionals_D_Region <- bind_rows(conventionals_D_Region, conventionals_D_add) %>%
+#   st_as_sf( coords = c("Longitude", "Latitude"), 
+#            remove = F, # don't remove these lat/lon cols from df
+#            crs = 4326)  # add projection, needs to be geographic bc entering lat/lng
+
+# for Demo of just BRRO, if needed
+#conventionals_D_Region <- readRDS('data/conventionalsKeep.RDS')
 
 rm(assessmentLayer);rm(conventionals_D)
 
@@ -184,7 +221,7 @@ rm(assessmentLayer);rm(conventionals_D)
 First thing we want to do now is filter out any sites that fall into the estuary AUs. These stations will have to be assessed through other means. **Note: you can download the table below for reference by running the commented script. These are all the stations within the selected assessment region that fall into an estuary AU based on the 2018 AU layers.**
 
 The below chunk:
-1) Reads in the 2018 estuary AU layer
+1) Reads in the 2018 draft estuary AU layer
 2) Finds any sites that fall into an estuary AU polygon
   - see optional code to write those sites to a separate csv for future reference
 3) Removes any estuarine sites from the data frame of unique conventionals sites that need AU and WQS information.
@@ -197,6 +234,8 @@ estuaryAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_estuarine.shp') %>%
 conventionals_D_Region_Estuary <- st_join(conventionals_D_Region, estuaryAUs, join = st_intersects) %>%
       filter(!is.na(OBJECTID))
 
+# Remove the # if you want to run any of the lines below to save out the estuary sites to look at now. You will save them out at the end of the script, so this is optional right now.
+
 #write.csv(conventionals_D_Region_Estuary, 'conventionals_D_Region_Estuary.csv', row.names = F) 
 # you can change the file location like so:
 #write.csv(conventionals_D_Region_Estuary, 'C:/Assessment/2020/dataProcessing/conventionals_D_Region_Estuary.csv', row.names = F) 
@@ -208,7 +247,6 @@ rm(estuaryAUs) # remove from memory
 Below is the table of sites that are estuarine.
 
 ```{r estuarySitesTable, echo=F}
-DT::datatable(conventionals_D_Region_Estuary, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(conventionals_D_Region_Estuary)
 ```
 
@@ -223,40 +261,10 @@ cat(paste('Removing the above sites, the unique conventionals sites have gone fr
 The next step uses the 2018 IR station table as a starting point for linking the stations from the 2020 IR window to the appropriate AU. This is important to do prior to doing any spatial subsetting or snapping because most of the stations from the previous cycle already have QAed assessment unit information readily available and organized. It is computationally less expensive to save any necessary spatial subsetting or snapping to lake/reservoir polygons or stream segments until all joins that can be done with table methods are first completed.
 
 ```{r previousCycleStationTable}
-## THERE IS NOT FINAL 2018 STATIONS TABLE RIGHT NOW SO WORKING WITH EACH REGION INDIVIDUALLY
-## When 2018 is published it iwll look something like X:\2016_Assessment\GIS_2016\MonitoringStations\ir_mon_stations_2016_FINAL.mdb
+# Statewide (mostly final) stations table from Cleo ( April 19, 2019), I exported the table to excel to avoid changing to 32bit version of R. DEQ only has 32 bit version of MS Office products, so connecting to Access databases requires changing the R program slightly, which is a pain in the middle of the script and going from 64 bit to 32 bit version of R just to connect to Access unnecessarily slows other processing times, so I made it easier with the Excel export step.
 
-
-#stationTable <- read_excel('data/2018_ir_mon_stations_SWRO.xlsx') %>%
-#  dplyr::rename("ID305B_1" = "AU ID #1", 'ID305B_2' = "AU ID #2", 'ID305B_3' = "AU ID #3", 
-#                "DEPTH" = "Depth", "STATION_ID" = "Station ID", 
-#                "STATION_TYPE_1" = "Station Type #1", "STATION_TYPE_2" = "Station Type #2",
-#                "STATION_TYPE_3" = "Station Type #3", "STATION_LAT" = "Station Lat.",
-#                "STATION_LON" = "Station Lon." , "WATERSHED_ID" = "Watershed", 
-#                "TEMP_VIO" = "Temp. Exc.",  "TEMP_SAMP" = "Temp.Sam.",  "TEMP_STAT" = "Temperature Status",
-#                "DO_VIO" ="DO Exc." ,  "DO_SAMP" ="DO Sam." , "DO_STAT" ="DO Status",
-#                "PH_VIO" ="pH Exc.", "PH_SAMP" ="pH Sam.", "PH_STAT" ="pH Status",
-#                "ECOLI_VIO" ="eColi Exc." ,  "ECOLI_SAMP" = "eColi Sam." , "ECOLI_STAT"= "eColi Status" ,
-#                "ENTER_VIO" ="Entero. Exc.",  "ENTER_STAT" = "Enterococci Status",
-#                "WAT_MET_VIO" ="Metals Exc...21",   "WAT_MET_STAT" = "Metals Status..22", 
-#                "WAT_TOX_VIO" ="Toxics Exc...23", "WAT_TOX_STAT" = "Toxics Status..24",
-#                "SED_MET_VIO" = "Metals Exc...25",   "SED_MET_STAT" =  "Metals Status..26", 
-#                "SED_TOX_VIO" ="Toxics Exc...27",    "SED_TOX_STAT" ="Toxics Status..28",
-#                "FISH_MET_VIO" =  "Metals Exc...29" , "FISH_MET_STAT" = "Metals Status..30",
-#                "FISH_TOX_VIO" = "Toxics Exc...31",  "FISH_TOX_STAT" ="Toxics Status..32" ,
-#                "BENTHIC_STAT" = "Benthics Status", "NUT_TP_VIO" ="TP Exc.",    
-#                "NUT_TP_SAMP" = "TP Sam." ,   "NUT_TP_STAT" ="Total Phosphorus Status",
-#                "NUT_CHLA_VIO" ="Chl A Exc.",  "NUT_CHLA_SAMP" ="Chl A Sam.", 
-#                "NUT_CHLA_STAT" = "Chlorophyll A Status", "COMMENTS" = "Station Comments") %>%
-#  mutate( REGION = 'SWRO', ENTER_SAMP = NA)
-
-# Bring in EVJ edited stations table
-stationTable <- read_csv('data/2018_ir_mon_stations_SWRO_EVJ.csv')
-
-# Reorganize columns to match Cleo's system
-cleo <- read_excel('data/tbl_ir_mon_stations_template.xlsx')
-
-previousCycleStationTable <- dplyr::select(stationTable, names(cleo))
+previousCycleStationTable <- read_excel('data/final2020data/tbl_ir_mon_stations.xlsx') %>%
+  filter(REGION == regionCode)
 
 
 # Join unique sites from current cycle to last cycle's station table to see what already has AU info
@@ -271,19 +279,17 @@ conventionals_D_Region_NoAU <- filter(conventionals_D_Region_AU, is.na(ID305B_1)
 conventionals_D_Region_AU <- filter(conventionals_D_Region_AU, !is.na(ID305B_1))
 #View(conventionals_D_Region_AU)
 
-rm(conventionals_D_Region_NoEstuary);rm(cleo);rm(stationTable) # clean up workspace
+rm(conventionals_D_Region_NoEstuary) # clean up workspace
 ```
 
 
 The table below illustrates all the  unique conventionals sites that matched stations from 2018 IR station table by STATION_ID/FDT_STA_ID.
 ```{r conventionals_D_Region_AU, echo=F}
-DT::datatable(conventionals_D_Region_AU, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(conventionals_D_Region_Estuary)
 ```
 
 The table below illustrates all the unique conventionals sites that did not match any stations from 2018 IR station table by STATION_ID/FDT_STA_ID.
 ```{r conventionals_D_Region_NoAU, echo=F}
-DT::datatable(conventionals_D_Region_NoAU, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(conventionals_D_Region_Estuary)
 ```
 
@@ -330,13 +336,14 @@ The next chunk will bring in the riverine AU layer from the previous cycle, comp
 riverineAUs <-  st_read('GIS/draft2018_spatialData/va_2018_aus_riverine.shp') %>%
   st_transform(crs = 102003)  # transform to Albers for spatial intersection
 
-Regional_Sites_AU <- snapAndOrganizeAU(conventionals_D_Region_NoAU, riverineAUs,  bufferDistances = seq(10,50,by=10))
+Regional_Sites_AU <- snapAndOrganizeAU(conventionals_D_Region_NoAU, riverineAUs,  bufferDistances = seq(10,80,by=10))
 # this buffers up to 100 m by 10 m
 #Regional_Sites_AU <- snapAndOrganizeAU(conventionals_D_Region_NoAU, riverineAUs, bufferDistances = seq(10,100,by=10)) 
- # this buffers up to 50 m by 5 m
+# this buffers up to 50 m by 5 m
 #Regional_Sites_AU <- snapAndOrganizeAU(conventionals_D_Region_NoAU, riverineAUs, bufferDistances = seq(10,50,by=5))
 
 rm(riverineAUs) #clean up workspace
+
 ```
 
 We can now filter the results to figure out sites that worked and sites that still need special attention. 
@@ -344,7 +351,6 @@ We can now filter the results to figure out sites that worked and sites that sti
 Below are the sites that still need work.
 ```{r conventionals_D_Region_NoAU still, echo=F}
 conventionals_D_Region_NoAU <- filter(Regional_Sites_AU, is.na(ID305B_1))
-DT::datatable(conventionals_D_Region_NoAU, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(conventionals_D_Region_NoAU)
 ```
 
@@ -354,7 +360,6 @@ These sites will still be snapped to WQS, but they still need AU information bef
 Below are the sites that worked. These can be combined with our conventionals_D_Region_AU layer now. 
 ```{r Regional_Sites_AUgood, echo=F}
 Regional_Sites_AU <- filter(Regional_Sites_AU, !is.na(ID305B_1))
-DT::datatable(Regional_Sites_AU, escape=F, rownames = F, options = list(scrollX = TRUE))
 #View(Regional_Sites_AU)
 
 
@@ -372,15 +377,27 @@ Now all the stations need water quality standards attached as the final data org
 
 #### Updated Reservoir WQS layer
 
-We will bring in the updated WQS reservoir layer, to attach to stations that are in lacustrine AU's. 
+We will bring in the updated WQS reservoir layer, to attach to stations that are in lacustrine AU's. There are three methods below for identifying your lacustrine stations to choose from. Only one needs to be run to establish a reservoirStations object to join to reservoir WQS information. 
 
 ```{r find Lacustrine AUs, echo=F}
 # Bring reservoir AUs back in just for ID305B options
 reservoirAUs <- as.character(st_read('GIS/draft2018_spatialData/va_2018_aus_reservoir.shp')$ID305B)
 
+# Method 1: use lake AU's
 # Separate lake stations from stream stations
+# this is one way, but since we have Paula's official station table, we will use that instead
 reservoirStations <- filter(conventionals_D_Region_AU, ID305B_1 %in% unique(reservoirAUs) |
                               ID305B_2 %in% unique(reservoirAUs) | ID305B_3 %in% unique(reservoirAUs))
+
+# Method 2: Look for 'L' designation in station type codes
+#reservoirStations <- filter(conventionals_D_Region_AU,  grepl("L",STATION_TYPE_1) | grepl("L",STATION_TYPE_2) |
+#                               grepl("L",STATION_TYPE_3))
+# the L searching method is safer because it captures the ,L situations where L tacked on to other station designation
+
+# Method 3: use original lake stations table
+# but the safest method for BRRO is to just use Paula's stations table
+#reservoirStations <- filter(conventionals_D_Region_AU, FDT_STA_ID %in% stationTableLake$STATION_ID)
+
 
 # Bring in reservoir WQS
 reservoirWQS <- st_read('GIS/updatedWQS/reservoir.shp') %>%
@@ -391,17 +408,21 @@ reservoirStationsWQS <- st_join(reservoirStations, reservoirWQS, join = st_inter
   filter(!is.na(OBJECTID)) # only keep rows where join successful
 #View(reservoirStationsWQS)
 
+# add back in duplicate issues where lacustrine and riverine, important where stations used for both riverine and lacustrine assessments
+notInReservoirWQS <- unique(reservoirStations$FDT_STA_ID)[!( unique(reservoirStations$FDT_STA_ID) %in% unique(reservoirStationsWQS$FDT_STA_ID))]
+
 # Run all stations that didn't connect to lake WQS polygon through streams snapping tool
-riverineStationsWQS <- filter(conventionals_D_Region_AU, !(FDT_STA_ID %in% reservoirStationsWQS$FDT_STA_ID))
+riverineStationsWQS <- filter(conventionals_D_Region_AU, !(FDT_STA_ID %in% reservoirStationsWQS$FDT_STA_ID) |
+                                FDT_STA_ID %in% notInReservoirWQS)
                               
 # Make sure we didn't lose anyone
-nrow(riverineStationsWQS) + nrow(reservoirStationsWQS) == nrow(conventionals_D_Region_AU)
+nrow(riverineStationsWQS) + nrow(reservoirStationsWQS) == nrow(conventionals_D_Region_AU) 
 
 rm(reservoirWQS);rm(reservoirAUs); rm(reservoirStations) # clean up workspace
 ```
 
 
-All stations that did not attach to a lake AU will be run below as a stream site. This stream WQS snapping tool behaves the same way as the AU snapping tool; however, we are bringing in basins for snapping one at a time because the WQS files are so large. The tool will handle the organization and snapping by basin. You are only responsible for using the gadget that pops up in the Viewer panel when each basin prompts you. You can see the progress below the chunk. This is the most computationally heavy part of the process.
+All stations that did not attach to a lake WQS will be run below as a stream site. This stream WQS snapping tool behaves the same way as the AU snapping tool; however, we are bringing in basins for snapping one at a time because the WQS files are so large. The tool will handle the organization and snapping by basin. You are only responsible for using the gadget that pops up in the Viewer panel when each basin prompts you. You can see the progress below the chunk. This is the most computationally heavy part of the process.
 
 
 ```{r attachStreamWQS, echo=F}
@@ -410,7 +431,7 @@ regionalOutput <- list()
 for (i in 1:length(unique(riverineStationsWQS$Basin))){
   Regional_Sites_AU_basin <- filter(riverineStationsWQS, Basin %in% unique(riverineStationsWQS$Basin)[i] )
   WQSsnaps <- snapAndOrganizeWQS(Regional_Sites_AU_basin, 'GIS/updatedWQS/', 
-                                 basinNameSwitcher(unique(riverineStationsWQS$Basin)[i]),  seq(10,50,by=10))
+                                 basinNameSwitcher(unique(riverineStationsWQS$Basin)[i]),  seq(10,80,by=10))
   regionalOutput[[i]] <- WQSsnaps
 }
 ```
@@ -428,17 +449,18 @@ Below is the table of riverine stations without WQS information attached. These 
 
 ```{r RegionalResults table, echo=F}
 RegionalResultsNoWQS <- filter(RegionalResults, is.na(OBJECTID))
-
-DT::datatable(RegionalResultsNoWQS, escape=F, rownames = F, options = list(scrollX = TRUE))
+#View(RegionalResultsNoWQS)
 ```
 
 Lastly, we need to combine the lake and stream stations into a single dataframe. After we combine we will separate out the stations that need either AU or WQS manual entry. We suggest using GIS to find this information. 
 
 ```{r combine WQS, echo=F}
 # Reorder columns in reservoirStationsWQS to match RegionalResults to allow row binding
-reservoirStationsWQS <- mutate(reservoirStationsWQS, Point.Unique.Identifier=NA, Buffer.Distance=NA, StreamType=NA) %>%
-  select(FDT_STA_ID:COMMENTS, Point.Unique.Identifier, Buffer.Distance, OBJECTID:FCode, BASIN, WQS_COMMEN, 
-         WATER_NAME, SEC, CLASS, SPSTDS, SECTION_DE, Basin_Code, PWS, Trout, Edit_Date, StreamType, 
+reservoirStationsWQS <- mutate(reservoirStationsWQS, Point.Unique.Identifier=NA, 
+                               Buffer.Distance=NA, StreamType=NA) %>%
+  select(FDT_STA_ID:COMMENTS, Point.Unique.Identifier, Buffer.Distance, 
+         OBJECTID:FCode, BASIN, WQS_COMMEN, WATER_NAME, SEC, CLASS, 
+         SPSTDS, SECTION_DE, Basin_Code, PWS, Trout, Edit_Date, StreamType, 
          Tier_III, Backlog, Shape_Leng)%>%
   st_set_geometry(NULL)
 
@@ -452,33 +474,41 @@ This next chunk walks users through saving all the results. The results are save
 ```{r saveResults, echo=FALSE}
 # This table has all unique stations within the selected region, regardless of AU or WQS connections.
 write.csv(RegionalResultsCombined, paste('processedStationData/final2020data/RegionalResultsCombined_',
-                                         unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+                                         regionCode,'.csv',sep=''), row.names=FALSE)
 
 # This table and shapefile highlights the stations that need AU information prior to use in assessment apps
 RegionalResultsCombined_NoAU <- filter(RegionalResultsCombined, is.na(ID305B_1))
-write.csv(RegionalResultsCombined_NoAU, paste('processedStationData/final2020data/RegionalResultsCombined_NoAU_',
-                                              unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+write.csv(RegionalResultsCombined_NoAU,
+          paste('processedStationData/final2020data/RegionalResultsCombined_NoAU_',      
+                regionCode,'.csv',sep=''), row.names=FALSE)
+#shapefile version of same data
 RegionalResultsCombined_NoAU_sf <- RegionalResultsCombined_NoAU %>%
   st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
            remove = F, # don't remove these lat/lon cols from df
            crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
-st_write(RegionalResultsCombined_NoAU_sf, paste('processedStationData/final2020data/RegionalResultsCombined_NoAU_',
-         unique(assessmentLayerSelection$ASSESS_REG),'.shp',sep=''))
+st_write(RegionalResultsCombined_NoAU_sf,
+         paste('processedStationData/final2020data/RegionalResultsCombined_NoAU_',
+               regionCode,'.shp',sep=''))
 
 # This table and shapefile highlights the stations that need WQS information prior to use in assessment apps
 RegionalResultsCombined_NoWQS <- filter(RegionalResultsCombined, is.na(OBJECTID))
-write.csv(RegionalResultsCombined_NoWQS, paste('processedStationData/final2020data/RegionalResultsCombined_NoWQS_',
-                                              unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+write.csv(RegionalResultsCombined_NoWQS,
+          paste('processedStationData/final2020data/RegionalResultsCombined_NoWQS_',
+                regionCode,'.csv',sep=''), row.names=FALSE)
+#shapefile version of same data
 RegionalResultsCombined_NoWQS_sf <- RegionalResultsCombined_NoWQS %>%
   st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
            remove = F, # don't remove these lat/lon cols from df
            crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
-st_write(RegionalResultsCombined_NoWQS_sf, paste('processedStationData/final2020data/RegionalResultsCombined_NoWQS_',
-         unique(assessmentLayerSelection$ASSESS_REG),'.shp',sep=''))
+st_write(RegionalResultsCombined_NoWQS_sf,
+         paste('processedStationData/final2020data/RegionalResultsCombined_NoWQS_',
+               regionCode,'.shp',sep=''))
 
 
 # This table has all Estuary sites for your reference. None of the available assessment apps currently handle estuarine assessments
-write.csv(conventionals_D_Region_Estuary, paste('processedStationData/final2020data/EstuarineSites_',unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+write.csv(conventionals_D_Region_Estuary,
+          paste('processedStationData/final2020data/EstuarineSites_',
+                regionCode,'.csv',sep=''), row.names=FALSE)
 ```
 
 
@@ -486,28 +516,159 @@ write.csv(conventionals_D_Region_Estuary, paste('processedStationData/final2020d
 
 Once you fix any stations that are missing AU or WQS information, you can read the entire dataset back to this script and have the program split the station tables into stations that will be analyzed by the lake assessment app and those that will be assessed by the rivers and streams assessment app. **All stations that need to be assessed by the lake assessment app require a 'L' in either STATION_TYPE_1, STATION_TYPE_2, or STATION_TYPE_3 fields.** Packages and necessary datasets are reloaded in case you are not completing this step in the same session as the previous AU/WQS assignment session. 
 
-** Minimal user input: if the file or file location you want to upload differs from the example given, you will need to update it to work with your configuration. **
+**Minimal user input: if the file or file location you want to upload differs from the example given, you will need to update it to work with your configuration.**
+
+If you are starting from a new session in R, you need to remind it what region you are working with. Use the same region code as specified above.
+
+```{r remindR}
+regionCode <- 'TRO'
+#regionCode <- 'BRRO'
+```
 
 
 ```{r splitRiversAndLakes, echo=F}
-#reload libraries in case you are starting from this point
 library(tidyverse)
 
 # This is the station table you have edited including all riverine and lake stations with all necessary AU and WQS information fixed for your region.
-RegionalResultsCombinedAll <- read_csv('processedStationData/final2020data/RegionalResultsCombined_final.csv')
+#RegionalResultsCombinedAll <- read_csv('processedStationData/final2020data/RegionalResultsCombined_final.csv')
+#RegionalResultsCombinedAll <-read_csv(' XXXX .csv')
+RegionalResultsCombinedAll <-read_csv('data/TRO/RegionalResultsCombined_TRO.csv')
 
-# Find all stations that have lake AUs
-lakeStations <- filter(RegionalResultsCombinedAll, STATION_TYPE_1 == "L" | 
-                         STATION_TYPE_2 == "L" | STATION_TYPE_3 == "L")
+# Quick duplicate check
+dupes <- RegionalResultsCombinedAll$FDT_STA_ID [duplicated(RegionalResultsCombinedAll$FDT_STA_ID )] 
+
+
+# Find all stations that have lake designations
+RegionalResultsCombinedAll3 <- mutate(RegionalResultsCombinedAll, 
+                                      lakeStation = ifelse(grepl("L",STATION_TYPE_1) |
+                                                             grepl("L",STATION_TYPE_2) |
+                                                             grepl("L",STATION_TYPE_3), 'lake','river'))
+
+```
+
+
+Now double check that no estuarine AUs are secretly in the dataset.
+
+```{r}
+# lazy
+RegionalResultsCombinedAll3$EorR <- NA
+for(i in 1: nrow(RegionalResultsCombinedAll3)){
+  RegionalResultsCombinedAll3$EorR[i] <- substr(strsplit(as.character(RegionalResultsCombinedAll3$ID305B_1[i]), '-')[[1]][2] ,4,4)
+
+}
+
+
+estuaryDoubleCheck <- filter(RegionalResultsCombinedAll3, EorR == 'E' )
+
+justFreshwater <- filter(RegionalResultsCombinedAll3, !(FDT_STA_ID %in% estuaryDoubleCheck$FDT_STA_ID))
+
+# make sure we aren't losing anyone
+nrow(estuaryDoubleCheck) + nrow(justFreshwater) == nrow(RegionalResultsCombinedAll3)
+
+```
+
+
+If there are, we will give those back to the assessor in a separate dataset. Now split river and lake sites by AU designation. 
+
+
+```{r split up freshwater}
+lakeStations <- filter(justFreshwater, lakeStation=='lake') %>%
+  select(-c(lakeStation, EorR))
 
 # Make the rest riverine
-riverStations <- filter(RegionalResultsCombinedAll, !(FDT_STA_ID %in% lakeStations)) 
+riverStations <- filter(justFreshwater, lakeStation != 'lake') %>%
+  select(-c(lakeStation, EorR))
+
+# Make sure we didnt lose anyone
+nrow(riverStations) + nrow(lakeStations) == nrow(justFreshwater)
+
+```
+
+Need to make sure all riverine sites have WQS. If they don't at this stage that means they are probably tidal fresh and need to be attached to estuary WQS information.
+
+```{r WQs for tidal fresh}
+tidalFresh <- filter(riverStations, is.na(OBJECTID)) %>% # get just those riverine sites that didnt join to class III-VI WQS layer
+  select(-c(OBJECTID:Shape_Leng)) %>% # remove columns we aim to add
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
+
+estuaryPolyWQS <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/updatedWQS/estuaryPolyWQS.shp') %>%
+   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+# find lake AUs, if Any
+tidalFresh2 <- st_join(tidalFresh, estuaryPolyWQS, join = st_intersects) %>%
+  select(-c(OBJECTID_1)) # remove bonus occurrence of this field
+
+tidalFreshFixed <- filter(tidalFresh2, !is.na(OBJECTID))  # only keep rows where join successful
+
+tidalFreshLines <- filter(tidalFresh2, is.na(OBJECTID)) %>% # only keep rows where NOT join successful
+  select(-c(Point.Unique.Identifier:Shape_Area))# remove columns we aim to add
+
+# make shapefile
+st_write(tidalFreshLines,
+         paste('processedStationData/final2020data/',
+               regionCode,'tidalFreshHelp.shp',sep=''))
+
+
+
+rm(estuaryPolyWQS) # clean up workspace
+
+
+
+# now do segment snapping analysis
+
+estuaryLinesWQS <-  st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/updatedWQS/estuaryLinesWQS.shp') %>%
+  st_transform(crs = 102003)  # transform to Albers for spatial intersection
+
+tidalFreshLines2 <- snapAndOrganizeWQSestuary(tidalFreshLines, estuaryLinesWQS,  bufferDistances = seq(10,80,by=10))
+
+# fix before merging
+tidalFreshFixed <- tidalFreshFixed %>% st_set_geometry(NULL) %>%
+  mutate(Trout=NA, StreamType=NA) %>%
+    select(names(riverStations))
+tidalFreshLines3 <- rename(tidalFreshLines2, 
+                           "Point.Unique.Identifier" = `Point Unique Identifier`,
+                           "Buffer.Distance" = `Buffer Distance`) %>%
+  select(names(riverStations))
+
+names(tidalFreshLines3) ==  names(tidalFreshFixed) == names(riverStations)
+
+
+riverStations2 <- filter(riverStations, !(FDT_STA_ID %in% tidalFreshLines3$FDT_STA_ID)) %>%
+  filter(!(FDT_STA_ID %in% tidalFreshFixed$FDT_STA_ID))
+
+
+riverStationsAll <- rbind(riverStations2, tidalFreshFixed, tidalFreshLines3)
+
+nrow(riverStationsAll) + nrow(lakeStations) == nrow(justFreshwater)
+
+
+# Fix WQS error by hand
+View(filter(riverStationsAll, FDT_STA_ID == '5BADA002.34')) # no wqs because it was left off updated chowan wqs riverine layer
+
+riverStationsAll <- mutate(riverStationsAll, 
+                            BASIN = ifelse(FDT_STA_ID == '5BADA002.34', '5B', BASIN),
+                            WATER_NAME = ifelse(FDT_STA_ID == '5BADA002.34', 'Unnamed tributary', WATER_NAME),
+                            SEC = ifelse(FDT_STA_ID == '5BADA002.34', '3', SEC),
+                            CLASS = ifelse(FDT_STA_ID == '5BADA002.34', 'III', CLASS),
+                            SECTION_DE = ifelse(FDT_STA_ID == '5BADA002.34', 
+                                                'Lake Drummond, including feeder ditches, and all interstate tributaries of the Dismal Swamp between Virginia and North Carolina.', SECTION_DE),
+                            Basin_Code = ifelse(FDT_STA_ID == '5BADA002.34', 'Chowan-Albermarle', Basin_Code))
+
+```
+
+
+Save out datasets
+
+```{r save out}
 
 # Save both for app use
 write.csv(lakeStations, paste('processedStationData/final2020data/RegionalResultsLake_',
-                                         unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
-write.csv(riverStations, paste('processedStationData/final2020data/RegionalResultsRiverine_',
-                                         unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+                                         regionCode,'FINAL.csv',sep=''), row.names=FALSE)
+write.csv(riverStationsAll, paste('processedStationData/final2020data/RegionalResultsRiverine_',
+                                         regionCode,'FINAL.csv',sep=''), row.names=FALSE)
+
 
 ```
 

@@ -24,9 +24,21 @@ This document walks users through runing the automated assessement for their reg
 The user will have to have all conventionals data, water column metals, and sediment metals organized by Roger for the window. Additionally, the EDAS data needs to be exported and available for use. Last cycle's finalized regional assessment layer (shapefile with AUs) are the spatial component needed. Lastly, the assessor must have the stations 2.0 table for the upcoming cycle completely filled out in order to run the assessment. 
 
 ```{r datasources}
-# Regional AU layer from last cycle
-regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineBRRO.shp') %>%
+# Regional AU layer from last cycle, change for each region
+
+## TRO ##
+regionalAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_riverineTRO.shp') %>%
   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+#BRRO
+#regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineBRRO.shp') %>%
+#  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+# SWRO
+#regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineSWRO.shp') %>%
+#  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 
 # Roger's conventionals data pull
@@ -71,10 +83,18 @@ VCPMI <- read_excel('data/Family Metrics - CPMI Combined.xlsx')%>%
   filter(RepNum == 1 & Target_Count == 110 &
            CollDate >= assessmentPeriod[1] )
 
-stationTable <- read_csv('processedStationData/draft2020data/RegionalResultsRiverine_BRRO_NOMISSINGDATA.csv') %>%
+stationTable <- read_csv('processedStationData/RegionalResultsRiverine_TROFINAL.csv') %>%
+  # BRRO
+  #read_csv('processedStationData/RegionalResultsRiverine_BRRO.csv') %>%
+  
+  # SWRO
+  #read_csv('processedStationData/RegionalResultsRiverine_SWRO_updated.csv') %>%
+  
+  
   # fix periods in column names from excel
-  as_tibble()# %>%
-  #dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance") # may need this step but also may not
+  as_tibble() %>%
+  dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance") %>%
+  mutate(VAHU6 = ifelse(is.na(VAHU6), Huc6_Vahu6, VAHU6)) 
 
 monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
 
@@ -85,12 +105,42 @@ monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # fro
 
 Now that we have all the data we need to run the assessment, we need to reorganize it to run smoothly through the app assessment functions. 
 
-```{r data manipulation}
+
+If you have any class II waters, run this first. It basically simplifies the potentially duplicated row with Class II waters and ches bay designation.
+
+```{r class II?}
+
+unique(stationTable$CLASS)
+```
+
+
+```{r class II pause}
+# Fix for Class II Tidal Waters in Chesapeake (bc complicated DO/temp/etc standard)
+stationTable1 <- dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, 
+                                                           SPSTDS, ID305B_1, ID305B_2, ID305B_3,
+                                                           STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin) %>%
+  left_join(WQSvalues, by = 'CLASS') %>%
+  mutate(`Dissolved Oxygen Min (mg/L)` = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA,`Dissolved Oxygen Min (mg/L)`),
+         `Dissolved Oxygen Daily Avg (mg/L)`  = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA, `Dissolved Oxygen Daily Avg (mg/L)`)) %>%
+  #mutate(`Dissolved Oxygen Min (mg/L)` = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA,
+  #       `Dissolved Oxygen Daily Avg (mg/L)`  = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA)) %>%
+  distinct(FDT_STA_ID, .keep_all = T)
+
+conventionals_HUC<- left_join(conventionals, stationTable1, by = "FDT_STA_ID")
+
+```
+
+
+If no class II waters then you can join directly by class
+
+
+```{r no class II}
 
 conventionals_HUC<- left_join(conventionals, dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, 
                                                            SPSTDS, ID305B_1, ID305B_2, ID305B_3,
                                                            STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin), by='FDT_STA_ID') %>%
   left_join(WQSvalues, by = 'CLASS')
+
 
 ```
 
@@ -113,43 +163,52 @@ for(i in 1:nrow(stationTable)){
   stationData <- filter(conventionals_HUC, FDT_STA_ID %in% stationTable$FDT_STA_ID[i]) 
   
   # separate objects bc some data smashing issues  
-  StationTablePrelimStuff <- StationTableStartingData(stationData)
+  #StationTablePrelimStuff <- StationTableStartingData(stationData)
   
   # Fix forced NA's from character to real NA
-  z <- StationTablePrelimStuff %>%
-      mutate_all(as.character)
-  z[z =="NA"] <- NA
+  #z <- StationTablePrelimStuff %>%
+  #    mutate_all(as.character)
+  #z[z =="NA"] <- NA
   # manipulate ID305B_1 to get DCR11 watershed ID
-  watID <-  substr(strsplit(as.character(z$ID305B_1), '-')[[1]][2] , 1, 3)
-  z$WATERSHED_ID <- watID 
+  #watID <-  substr(strsplit(as.character(z$ID305B_1), '-')[[1]][2] , 1, 3)
+  #z$WATERSHED_ID <- watID 
   # full station table
-  results <- cbind(z, #StationTableStartingData(stationData),
+  results <- cbind(StationTableStartingData(stationData),
                    tempExceedances(stationData),
-                   DOExceedances_Min(stationData), 
-                               pHExceedances(stationData),
-                               bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'E.COLI', 126, 235),'E.COLI') %>% 
-                                 dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
-                               bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
-                                 dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
-                               metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
+                   DOExceedances_Min(stationData),
+                   pHExceedances(stationData),
+                   bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'E.COLI', 126, 235),'E.COLI') %>% 
+                     dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
+                   # new bacteria exceedance stats
+                   bacteriaExceedances_NEW(stationData,'E.COLI', 10, 410, 126),
+                   bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
+                     dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
+                   #new bacteria exceedance stats
+                   bacteriaExceedances_NEW(stationData,'ENTEROCOCCI',10, 35, 104),
+                   metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
                                                  dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'),
-                               acuteNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
-                                 dplyr::select(AcuteAmmonia_VIO, AcuteAmmonia_STAT) %>% 
-                                 dplyr::rename('WAT_TOX_VIO' ='AcuteAmmonia_VIO','WAT_TOX_STAT' = 'AcuteAmmonia_STAT'),
-                               metalsExceedances(filter(Smetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
-                                                 dplyr::select(ARSENIC:ZINC), 'SED_MET') %>%
-                                 dplyr::select(-ends_with('exceedanceRate')),
-                               data.frame(SED_TOX_VIO='Not Analyzed by App', SED_TOX_STAT='Not Analyzed by App'),# Placeholder for sediment toxics
-                               data.frame(FISH_MET_VIO='Not Analyzed by App', FISH_MET_STAT='Not Analyzed by App'), # Placeholder for fish metals
-                               data.frame(FISH_TOX_VIO='Not Analyzed by App', FISH_TOX_STAT='Not Analyzed by App'),# Placeholder for fish toxics
-                               benthicAssessment(stationData,conventionals_sf,VSCI,VCPMI),
-                               countTP(stationData),
-                               countchla(stationData),
-                               data.frame(COMMENTS= 'Not Analyzed by App')) %>%
+                   acuteNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
+                     dplyr::select(AcuteAmmonia_VIO, AcuteAmmonia_STAT) %>%
+                     dplyr::rename('WAT_TOX_VIO' ='AcuteAmmonia_VIO','WAT_TOX_STAT' = 'AcuteAmmonia_STAT'),
+                   metalsExceedances(filter(Smetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
+                                       dplyr::select(ARSENIC:ZINC), 'SED_MET') %>%
+                     dplyr::select(-ends_with('exceedanceRate')),
+                   data.frame(SED_TOX_VIO='Not Analyzed by App', SED_TOX_STAT='Not Analyzed by App'),# Placeholder for sediment toxics
+                   data.frame(FISH_MET_VIO='Not Analyzed by App', FISH_MET_STAT='Not Analyzed by App'), # Placeholder for fish metals
+                   data.frame(FISH_TOX_VIO='Not Analyzed by App', FISH_TOX_STAT='Not Analyzed by App'),# Placeholder for fish toxics
+                   benthicAssessment(stationData,conventionals_sf,VSCI,VCPMI),
+                   countTP(stationData),
+                   countchla(stationData),
+                   data.frame(COMMENTS= 'Not Analyzed by App')) %>%
     dplyr::select(-ends_with('exceedanceRate'))
+  
+  # manipulate ID305B_1 to get DCR11 watershed ID
+  results$WATERSHED_ID <- substr(strsplit(as.character(results$ID305B_1), '-')[[1]][2] , 1, 3)
+  
   
   stationTableResults <- rbind(stationTableResults,results)
 }
+
 timeDiff = Sys.time()- startTime
 
 ```
@@ -191,7 +250,8 @@ datatable(stationTableResultsWithComments, extensions = 'Buttons', escape=F, row
 
 Save results.
 ```{r saveResults}
-write.csv(stationTableResultsWithComments, paste("stationTableResults",Sys.Date(),".csv",sep=''), row.names = FALSE, na="")
+regionCode <- 'TRO'
+write.csv(stationTableResultsWithComments, paste("stationTableResults", regionCode,Sys.Date(),".csv",sep=''), row.names = FALSE, na="")
 ```
 
 

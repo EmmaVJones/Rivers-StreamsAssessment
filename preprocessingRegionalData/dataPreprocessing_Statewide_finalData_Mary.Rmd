@@ -86,7 +86,7 @@ unique(assessmentLayer$ASSESS_REG)
 Insert one of those unique codes in quotes into the chunk below. The commented out script serves as an example for you.
 
 ```{r DEQ region selection}
-assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == 'SWRO')
+assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == 'BRRO')
 #assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG ==    )
 #assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == 'BRRO')
 ```
@@ -168,10 +168,10 @@ After you have completed adding all FDT_STA_ID's to the filter statement, press 
 
 ```{r conventionals_D_Region adjustments}
 
-conventionals_D_add <- filter(conventionals_D, FDT_STA_ID %in% c(''))
+conventionals_D_add <- filter(conventionals_D, FDT_STA_ID %in% c('')) # '9-NEW107.50','9-NEW107.51','9-WFC017.31' were noted in an email exchange
 #conventionals_D_add <- filter(conventionals_D, FDT_STA_ID %in% c('STATIONID_1','STATIONID_2','STATIONID_3')) # example filter statement
 
-conventionals_D <- bind_rows(conventionals_D, conventionals_D_add)
+conventionals_D_Region <- bind_rows(conventionals_D_Region, conventionals_D_add)
 
 rm(assessmentLayer);rm(conventionals_D)
 
@@ -227,36 +227,32 @@ The next step uses the 2018 IR station table as a starting point for linking the
 ## When 2018 is published it iwll look something like X:\2016_Assessment\GIS_2016\MonitoringStations\ir_mon_stations_2016_FINAL.mdb
 
 
-#stationTable <- read_excel('data/2018_ir_mon_stations_SWRO.xlsx') %>%
-#  dplyr::rename("ID305B_1" = "AU ID #1", 'ID305B_2' = "AU ID #2", 'ID305B_3' = "AU ID #3", 
-#                "DEPTH" = "Depth", "STATION_ID" = "Station ID", 
-#                "STATION_TYPE_1" = "Station Type #1", "STATION_TYPE_2" = "Station Type #2",
-#                "STATION_TYPE_3" = "Station Type #3", "STATION_LAT" = "Station Lat.",
-#                "STATION_LON" = "Station Lon." , "WATERSHED_ID" = "Watershed", 
-#                "TEMP_VIO" = "Temp. Exc.",  "TEMP_SAMP" = "Temp.Sam.",  "TEMP_STAT" = "Temperature Status",
-#                "DO_VIO" ="DO Exc." ,  "DO_SAMP" ="DO Sam." , "DO_STAT" ="DO Status",
-#                "PH_VIO" ="pH Exc.", "PH_SAMP" ="pH Sam.", "PH_STAT" ="pH Status",
-#                "ECOLI_VIO" ="eColi Exc." ,  "ECOLI_SAMP" = "eColi Sam." , "ECOLI_STAT"= "eColi Status" ,
-#                "ENTER_VIO" ="Entero. Exc.",  "ENTER_STAT" = "Enterococci Status",
-#                "WAT_MET_VIO" ="Metals Exc...21",   "WAT_MET_STAT" = "Metals Status..22", 
-#                "WAT_TOX_VIO" ="Toxics Exc...23", "WAT_TOX_STAT" = "Toxics Status..24",
-#                "SED_MET_VIO" = "Metals Exc...25",   "SED_MET_STAT" =  "Metals Status..26", 
-#                "SED_TOX_VIO" ="Toxics Exc...27",    "SED_TOX_STAT" ="Toxics Status..28",
-#                "FISH_MET_VIO" =  "Metals Exc...29" , "FISH_MET_STAT" = "Metals Status..30",
-#                "FISH_TOX_VIO" = "Toxics Exc...31",  "FISH_TOX_STAT" ="Toxics Status..32" ,
-#                "BENTHIC_STAT" = "Benthics Status", "NUT_TP_VIO" ="TP Exc.",    
-#                "NUT_TP_SAMP" = "TP Sam." ,   "NUT_TP_STAT" ="Total Phosphorus Status",
-#                "NUT_CHLA_VIO" ="Chl A Exc.",  "NUT_CHLA_SAMP" ="Chl A Sam.", 
-#                "NUT_CHLA_STAT" = "Chlorophyll A Status", "COMMENTS" = "Station Comments") %>%
-#  mutate( REGION = 'SWRO', ENTER_SAMP = NA)
+################################### Only this way for now because dont have one table I can pull this data from ##########################
+# From Mary (Rivers)
+stationTable <- read_excel('data/BRRO/STREAMS_ir_mon_stations_2Apr2019.xlsx', sheet='2018IR_Stations_FINAL') %>%
+  rename('COMMENTS'='Notes' )
+stationTable$WAT_MET_VIO <- as.numeric(stationTable$WAT_MET_VIO)
+stationTable$FISH_MET_VIO <- as.numeric(stationTable$FISH_MET_VIO)
 
-# Bring in EVJ edited stations table
-stationTable <- read_csv('data/2018_ir_mon_stations_SWRO_EVJ.csv')
+#From Paula (lakes)
+stationTableLake <- read_excel('data/BRRO/Paula_tbl_ir_mon_stations_BRRO_2018_JRH_v1 (2).xlsx', sheet ='tbl_ir_mon_stations_2018_LAKES') %>%
+  dplyr::select(ID305B_1:COMMENTS) %>%
+  filter(!is.na(ID305B_1)) # some extra rows got in there
+stationTableLake$SED_MET_VIO <- as.numeric(stationTableLake$SED_MET_VIO)
+
+# Now combine and get rid of duplicate entries
+previousCycleStationTable <- bind_rows(stationTable,stationTableLake) %>%
+  #distinct(stationTable, STATION_ID, ID305B_1, ID305B_2, ID305B_3, .keep_all = T) %>%
+  group_by(STATION_ID) %>%
+  mutate(extra= n()) %>%
+  select(extra, everything())
+
+z <- filter(previousCycleStationTable, extra > 1) # keep a list of the problem sites
 
 # Reorganize columns to match Cleo's system
 cleo <- read_excel('data/tbl_ir_mon_stations_template.xlsx')
 
-previousCycleStationTable <- dplyr::select(stationTable, names(cleo))
+previousCycleStationTable <- dplyr::select(previousCycleStationTable, names(cleo))
 
 
 # Join unique sites from current cycle to last cycle's station table to see what already has AU info
@@ -376,11 +372,23 @@ We will bring in the updated WQS reservoir layer, to attach to stations that are
 
 ```{r find Lacustrine AUs, echo=F}
 # Bring reservoir AUs back in just for ID305B options
-reservoirAUs <- as.character(st_read('GIS/draft2018_spatialData/va_2018_aus_reservoir.shp')$ID305B)
+#reservoirAUs <- as.character(st_read('GIS/draft2018_spatialData/va_2018_aus_reservoir.shp')$ID305B)
 
+# Method 1: use lake AU's
 # Separate lake stations from stream stations
-reservoirStations <- filter(conventionals_D_Region_AU, ID305B_1 %in% unique(reservoirAUs) |
-                              ID305B_2 %in% unique(reservoirAUs) | ID305B_3 %in% unique(reservoirAUs))
+# this is one way, but since we have Paula's official station table, we will use that instead
+#reservoirStations <- filter(conventionals_D_Region_AU, ID305B_1 %in% unique(reservoirAUs) |
+#                              ID305B_2 %in% unique(reservoirAUs) | ID305B_3 %in% unique(reservoirAUs))
+
+# Method 2: Look for 'L' designation in station type codes
+#reservoirStations <- filter(conventionals_D_Region_AU,  grepl("L",STATION_TYPE_1) | grepl("L",STATION_TYPE_2) |
+#                               grepl("L",STATION_TYPE_3))
+# the L searching method is safer because it captures the ,L situations where L tacked on to other station designation
+
+# Method 3: use original lake stations table
+# but the safest method for BRRO is to just use Paula's stations table
+reservoirStations <- filter(conventionals_D_Region_AU, FDT_STA_ID %in% stationTableLake$STATION_ID)
+
 
 # Bring in reservoir WQS
 reservoirWQS <- st_read('GIS/updatedWQS/reservoir.shp') %>%
@@ -391,11 +399,15 @@ reservoirStationsWQS <- st_join(reservoirStations, reservoirWQS, join = st_inter
   filter(!is.na(OBJECTID)) # only keep rows where join successful
 #View(reservoirStationsWQS)
 
+# add back in duplicate issues where lacustrine and riverine
+notInReservoirWQS <- unique(reservoirStations$FDT_STA_ID)[!( unique(reservoirStations$FDT_STA_ID) %in% unique(reservoirStationsWQS$FDT_STA_ID))]
+
 # Run all stations that didn't connect to lake WQS polygon through streams snapping tool
-riverineStationsWQS <- filter(conventionals_D_Region_AU, !(FDT_STA_ID %in% reservoirStationsWQS$FDT_STA_ID))
+riverineStationsWQS <- filter(conventionals_D_Region_AU, !(FDT_STA_ID %in% reservoirStationsWQS$FDT_STA_ID) |
+                                FDT_STA_ID %in% notInReservoirWQS)
                               
 # Make sure we didn't lose anyone
-nrow(riverineStationsWQS) + nrow(reservoirStationsWQS) == nrow(conventionals_D_Region_AU)
+nrow(riverineStationsWQS) + nrow(reservoirStationsWQS) == nrow(conventionals_D_Region_AU) 
 
 rm(reservoirWQS);rm(reservoirAUs); rm(reservoirStations) # clean up workspace
 ```
@@ -488,26 +500,53 @@ Once you fix any stations that are missing AU or WQS information, you can read t
 
 ** Minimal user input: if the file or file location you want to upload differs from the example given, you will need to update it to work with your configuration. **
 
+If you are starting from a new session in R, you need to remind it what region you are working with. Use the same region code as specified above.
+
+```{r remindR}
+assessmentLayerSelection <- 'BRRO'
+```
+
 
 ```{r splitRiversAndLakes, echo=F}
-#reload libraries in case you are starting from this point
 library(tidyverse)
 
 # This is the station table you have edited including all riverine and lake stations with all necessary AU and WQS information fixed for your region.
-RegionalResultsCombinedAll <- read_csv('processedStationData/final2020data/RegionalResultsCombined_final.csv')
+#RegionalResultsCombinedAll <- read_csv('processedStationData/final2020data/RegionalResultsCombined_final.csv')
+RegionalResultsCombinedAll <- read_csv('processedStationData/final2020data/MaryFiles/RegionalResultsCombined_BRROFINAL.csv')
 
-# Find all stations that have lake AUs
-lakeStations <- filter(RegionalResultsCombinedAll, STATION_TYPE_1 == "L" | 
-                         STATION_TYPE_2 == "L" | STATION_TYPE_3 == "L")
+# Quick duplicate check
+dupes <- RegionalResultsCombinedAll$FDT_STA_ID [duplicated(RegionalResultsCombinedAll$FDT_STA_ID )] 
+
+View(filter(RegionalResultsCombinedAll, FDT_STA_ID %in% dupes) %>% arrange(FDT_STA_ID))
+
+# 4APGG003.29 in there 4 times, doubled for lake and stream, everything else is okay to be duplicated
+RegionalResultsCombinedAll2 <- RegionalResultsCombinedAll %>% distinct() %>% # gets rid of duplicated PGG003.29 rows
+  mutate(keep=ifelse(FDT_STA_ID != '4ALVL001.11', 1, ifelse(FDT_STA_ID == '4ALVL001.11' & STATION_TYPE_2 == 'L', 1, 0))) %>%
+  filter(keep == '1') %>%
+  select(-keep)
+  
+#filter(!(FDT_STA_ID == '4ALVL001.11' & STATION_TYPE_2 == 'L'))
+
+# Find all stations that have lake designations
+RegionalResultsCombinedAll3 <- mutate(RegionalResultsCombinedAll2, lakeStation= ifelse(grepl("L",STATION_TYPE_1) | grepl("L",STATION_TYPE_2) |
+                               grepl("L",STATION_TYPE_3), 'lake','river'))
+
+lakeStations <- filter(RegionalResultsCombinedAll3, lakeStation=='lake') %>%
+  select(-lakeStation)
 
 # Make the rest riverine
-riverStations <- filter(RegionalResultsCombinedAll, !(FDT_STA_ID %in% lakeStations)) 
+riverStations <- filter(RegionalResultsCombinedAll3, lakeStation != 'lake') %>%
+  select(-lakeStation)
+
+# Make sure we didnt lose anyone
+nrow(riverStations) + nrow(lakeStations) == nrow(RegionalResultsCombinedAll3)
 
 # Save both for app use
 write.csv(lakeStations, paste('processedStationData/final2020data/RegionalResultsLake_',
-                                         unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+                                         assessmentLayerSelection,'FINAL.csv',sep=''), row.names=FALSE)
 write.csv(riverStations, paste('processedStationData/final2020data/RegionalResultsRiverine_',
-                                         unique(assessmentLayerSelection$ASSESS_REG),'.csv',sep=''), row.names=FALSE)
+                                         assessmentLayerSelection,'FINAL.csv',sep=''), row.names=FALSE)
+
 
 ```
 

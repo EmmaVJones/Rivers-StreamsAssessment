@@ -93,6 +93,7 @@ concatinateUnique <- function(stuff){
 changeDEQRegionName <- function(stuff){
   # have to do this bc different places in conventionals report the assessment region over sample region
   if(length(stuff) == 1){
+    if(is.na(stuff)){return("NA")}
     if(stuff == "Valley"){return('VRO')}
     if(stuff == "Northern"){return('NRO')}
     if(stuff == "Piedmont"){return('PRO')}
@@ -100,7 +101,6 @@ changeDEQRegionName <- function(stuff){
     if(stuff == "Tidewater"){return('TRO')}
     if(stuff == "Southwest" ){return('SWRO')}
     if(stuff == 'NA'){return('NA')}
-  #  if(is.na(stuff)){return("NA")}
   } else {return(concatinateUnique(stuff))}
 }
 
@@ -330,7 +330,7 @@ conventionalsToBacteria <- function(x, bacteriaType){
 # Calculate limits and return dataframe with original data and limits
 acuteNH3limit <- function(x){
   # Trout absent scenario, freshwater
-  if(unique(x$CLASS) %in% c("III","IV")){
+  if(unique(x$CLASS) %in% c("II","III","IV","VII")){
     return(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_FIELD_PH, AMMONIA) %>%
              mutate(NH3limit = (0.411/(1+10^(7.204-FDT_FIELD_PH)))+(58.4/(1+10^(FDT_FIELD_PH-7.204)))))  }
   # Trout present scenario, freshwater
@@ -338,6 +338,7 @@ acuteNH3limit <- function(x){
     return(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_FIELD_PH, AMMONIA) %>%
              mutate(NH3limit = (0.275/(1+10^(7.204-FDT_FIELD_PH)))+(39/(1+10^(FDT_FIELD_PH-7.204)))))  }
 }
+
 
 # Return one line summarizing samples and violation rate
 acuteNH3exceedance <- function(x){
@@ -349,7 +350,7 @@ acuteNH3exceedance <- function(x){
   
   
   # Trout absent scenario, freshwater
-  if(unique(x$CLASS) %in% c("III","IV")){
+  if(unique(x$CLASS) %in% c("II","III","IV", "VII")){
     ammonia <- acuteNH3limit(x) %>%
       filter(!is.na(AMMONIA)) %>% #get rid of NA's
       mutate(sampleYear = lubridate::year(FDT_DATE_TIME2)) # add year to enable filtering by last 3 years with data
@@ -382,6 +383,49 @@ acuteNH3exceedance <- function(x){
     }
     
   }
+  
+}
+
+
+
+
+
+# Calculate limits and return dataframe with original data and limits
+chronicNH3limit <- function(x){
+  # Fish present scenario
+  if(unique(x$CLASS) %in% c("II","III","IV","V","VI","VII")){
+    return(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_TEMP_CELCIUS, FDT_FIELD_PH, AMMONIA) %>%
+             mutate(NH3limit = ((0.0577/(1+10^(7.688-FDT_FIELD_PH)))+(2.487/(1+10^(FDT_FIELD_PH-7.688)))) * min(2.85, 1.45 * 10^(0028 * (25 - FDT_TEMP_CELCIUS)))) )  }
+}
+
+
+# Return one line summarizing samples and violation rate
+chronicNH3exceedance <- function(x){
+  # no data sent to function
+  if(nrow(x)==0){
+    return(quickStats(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_FIELD_PH, AMMONIA) %>%
+                        mutate(NH3limit = NA), 'ChronicAmmonia'))
+  }
+  
+  
+  # Fish present scenario
+  if(unique(x$CLASS) %in% c("II","III","IV","V","VI","VII")){
+    ammonia <- chronicNH3limit(x) %>%
+      filter(!is.na(AMMONIA)) %>% #get rid of NA's
+      mutate(sampleYear = lubridate::year(FDT_DATE_TIME2)) # add year to enable filtering by last 3 years with data
+    if(nrow(ammonia) == 0){
+      return(quickStats(ammonia,'ChronicAmmonia'))
+    } else {
+      last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3, TRUE)
+      ammonia <- filter(ammonia, sampleYear %in% last3years) %>%
+        select(-sampleYear) %>%
+        rename(parameter = !!names(.[5]), limit = !!names(.[6])) %>% # rename columns to make functions easier to apply
+        mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
+      
+      return(quickStats(ammonia, 'AcuteAmmonia'))  }
+  }
+  
+  
 }
 
 
@@ -433,13 +477,19 @@ TSulfatePWS <- function(x){
 benthicResultMetrics <- function(x, VSCI, VCPMI){
   out <- list()
   # VCPMI Ecoregion 63 + Chowan
-  if(unique(x$US_L3CODE) %in% 63 & 
+  if(unique(x$US_L3CODE) %in% 63 | 
      unique(x$Basin) %in% 'Chowan and Dismal Swamp River Basin'){
-    z <- filter(VCPMI, StationID %in% x$FDT_STA_ID) %>% mutate(SCI = 'VCPMI')}
+    z <- filter(VCPMI, StationID %in% x$FDT_STA_ID) %>% 
+      mutate(SCI = 'VCPMI', 
+             Season = ifelse(lubridate::month(CollDate) < 7, 'Spring', 'Fall'),
+             `Fam SCI`= CPMIScore)}
   if(unique(x$US_L3CODE) %in% 65  & 
      !(unique(x$Basin) %in% 'Chowan and Dismal Swamp River Basin' ) ){
-    z <- filter(VCPMI, StationID %in% x$FDT_STA_ID) %>% mutate(SCI = 'VCPMI')}
-  if(unique(x$US_L3CODE) %in% c(45, 64, 66, 67, 69)){
+    z <- filter(VCPMI, StationID %in% x$FDT_STA_ID) %>% 
+      mutate(SCI = 'VCPMI', 
+             Season = ifelse(lubridate::month(CollDate) < 7, 'Spring', 'Fall'),
+             `Fam SCI`= CPMIScore)}
+  if(unique(x$US_L3CODE) %in% c(NA, 45, 64, 66, 67, 69)){
     z <- filter(VSCI, StationID %in% x$FDT_STA_ID) %>% mutate(SCI = 'VSCI') }
   
   if(nrow(z) > 0){
