@@ -121,7 +121,7 @@ stationTable <- mutate(stationTable, CLASS_BASIN = paste(CLASS,substr(stationTab
 
 ```{r class II, eval=FALSE}
 
-unique(stationTable$CLASS)
+#unique(stationTable$CLASS)
 ```
 
 
@@ -188,6 +188,10 @@ for(i in 1:nrow(stationTable)){
   #watID <-  substr(strsplit(as.character(z$ID305B_1), '-')[[1]][2] , 1, 3)
   #z$WATERSHED_ID <- watID 
   # full station table
+  chronicAmmonia <- chronicNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
+                     dplyr::select(ChronicAmmonia_VIO)
+
+  
   results <- cbind(StationTableStartingData(stationData),
                    tempExceedances(stationData),
                    DOExceedances_Min(stationData),
@@ -214,7 +218,8 @@ for(i in 1:nrow(stationTable)){
                    benthicAssessment(stationData,conventionals_sf,VSCI,VCPMI),
                    countTP(stationData),
                    countchla(stationData),
-                   data.frame(COMMENTS= 'Not Analyzed by App')) %>%
+                   # Chronic Ammonia printed in Comments
+                   data.frame(COMMENTS= paste('WAT_TOX fields indicate acute ammonia calculations. Chronic Ammonia Violations: ',chronicAmmonia[1,]))) %>%
     dplyr::select(-ends_with('exceedanceRate'))
   
   # manipulate ID305B_1 to get DCR11 watershed ID

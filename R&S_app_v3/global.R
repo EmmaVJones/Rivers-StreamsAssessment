@@ -395,8 +395,7 @@ acuteNH3exceedance <- function(x){
 chronicNH3limit <- function(x){
   # Fish present scenario
   if(unique(x$CLASS) %in% c("II","III","IV","V","VI","VII")){
-    return(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_TEMP_CELCIUS, FDT_FIELD_PH, AMMONIA) %>%
-             mutate(NH3limit = ((0.0577/(1+10^(7.688-FDT_FIELD_PH)))+(2.487/(1+10^(FDT_FIELD_PH-7.688)))) * min(2.85, 1.45 * 10^(0028 * (25 - FDT_TEMP_CELCIUS)))) )  }
+    return(mutate(x,NH3limit = ((0.0577/(1+10^(7.688-FDT_FIELD_PH)))+(2.487/(1+10^(FDT_FIELD_PH-7.688)))) * min(2.85, 1.45 * 10^(0028 * (25 - FDT_TEMP_CELCIUS)))) )  }
 }
 
 
@@ -404,32 +403,51 @@ chronicNH3limit <- function(x){
 chronicNH3exceedance <- function(x){
   # no data sent to function
   if(nrow(x)==0){
-    return(quickStats(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_FIELD_PH, AMMONIA) %>%
+    return(quickStats(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_TEMP_CELCIUS, FDT_FIELD_PH, AMMONIA) %>%
                         mutate(NH3limit = NA), 'ChronicAmmonia'))
   }
   
   
-  # Fish present scenario
-  if(unique(x$CLASS) %in% c("II","III","IV","V","VI","VII")){
-    ammonia <- chronicNH3limit(x) %>%
-      filter(!is.na(AMMONIA)) %>% #get rid of NA's
-      mutate(sampleYear = lubridate::year(FDT_DATE_TIME2)) # add year to enable filtering by last 3 years with data
-    if(nrow(ammonia) == 0){
-      return(quickStats(ammonia,'ChronicAmmonia'))
-    } else {
-      last3years <- lastXyears(ammonia, 'FDT_DATE_TIME2', 3, TRUE)
-      ammonia <- filter(ammonia, sampleYear %in% last3years) %>%
-        select(-sampleYear) %>%
-        rename(parameter = !!names(.[5]), limit = !!names(.[6])) %>% # rename columns to make functions easier to apply
-        mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
-      
-      return(quickStats(ammonia, 'AcuteAmmonia'))  }
+  # 30 day averages
+  x_30avg <- dplyr::select(x, CLASS, FDT_DATE_TIME2, FDT_DEPTH, FDT_TEMP_CELCIUS, FDT_FIELD_PH, AMMONIA) 
+  AMMONIA_30avg <- data.frame(AMMONIA_30avg=NA, n_30avg=NA)
+  for( k in 1 : nrow(x_30avg)){
+    time1 <- x_30avg$FDT_DATE_TIME2[k]
+    timePlus90 <- as.Date(x_30avg$FDT_DATE_TIME2[k]) + 30
+    
+    # Organize prerequisites to decision process
+    z <- filter(x_30avg, FDT_DATE_TIME2 >= time1 & FDT_DATE_TIME2 <= timePlus90) %>% 
+      mutate(avg30 = mean(AMMONIA))
+    AMMONIA_30avg[k,1] <- unique(z$avg30)
+    AMMONIA_30avg[k,2] <- nrow(z)
   }
   
+  x_30avg <- cbind(x_30avg, AMMONIA_30avg) %>%
+    filter(n_30avg > 1)
+  #testing
+  # x_30avg <- cbind(x_30avg, AMMONIA_30avg)
+  #x_30avg[c(1,3,10),8] <- c(3,3, 3)
+  #x_30avg <- filter(x_30avg, n_30avg > 1)
   
+  if(nrow(x_30avg) > 0){
+    last3years <- lastXyears(x_30avg, 'FDT_DATE_TIME2', 3, TRUE)
+    
+    if(length(last3years) > 1){ # more than one year with > 1 sample per year
+      ammonia <- chronicNH3limit(x_30avg) %>%
+        filter(lubridate::year(FDT_DATE_TIME2) %in% last3years) %>%
+        rename(parameter = !!names(.[7]), limit = !!names(.[9])) %>% # rename columns to make functions easier to apply
+        mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
+      return(quickStats(ammonia, 'ChronicAmmonia'))
+    } else { # only 1 year with > 1 sample, can't assess for chronic
+      x_30avg <- x_30avg[0,]
+      return(quickStats(x_30avg, 'ChronicAmmonia'))
+    }
+    
+  } else {
+    return(quickStats(x_30avg, 'ChronicAmmonia'))
+  } 
 }
-
-
+ 
 
 #### Chloride PWS Assessment Functions ---------------------------------------------------------------------------------------------------
 

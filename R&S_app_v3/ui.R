@@ -92,6 +92,9 @@ shinyUI(fluidPage(theme="yeti.css",
                                             h5(strong('Assessment Units in Selected VAHU6')),
                                             DT::dataTableOutput('AUSummary'),
                                             h5(strong('Stations in Selected VAHU6 that were sampled in current window')),
+                                            helpText("The stations highlighted in gray can be analyzed by the application. The stations
+                                                     highlighted in yellow were sampled in the current window, but cannot be analyzed by the
+                                                     application because they are not in the input stations table 2.0"),
                                             DT::dataTableOutput('stationSummary')
                                           )
                                  ),
@@ -146,7 +149,10 @@ shinyUI(fluidPage(theme="yeti.css",
                                                                #temperatureExceedanceAnalysisUI('temperature_ExceedanceAnalysis')),
                                                       tabPanel('pH',
                                                                helpText('Review each site using the single site visualization section. The results from this analysis are reflected
-                                                                        in the PH_VIO, PH_SAMP, and PH_STAT columns in the station table.'),
+                                                                        in the PH_VIO, PH_SAMP, and PH_STAT columns in the station table.',span('If the Benthic Stressor Analysis
+                                                                                                                                                background colors differ from the standards
+                                                                                                                                                applied to the station being analyzed, this indicates
+                                                                                                                                                there are special WQS for this station.', style="color:red")),
                                                                pHPlotlySingleStationUI('pH')),
                                                                #br(),hr(),br(),
                                                                #pHExceedanceAnalysisUI('pH_ExceedanceAnalysis')),
