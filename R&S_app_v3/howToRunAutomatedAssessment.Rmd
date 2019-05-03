@@ -108,25 +108,37 @@ Now that we have all the data we need to run the assessment, we need to reorgani
 
 If you have any class II waters, run this first. It basically simplifies the potentially duplicated row with Class II waters and ches bay designation.
 
-```{r class II?}
+
+
+
+```{r}
+stationTable <- mutate(stationTable, CLASS_BASIN = paste(CLASS,substr(stationTable$BASIN, 1,1), sep="_")) %>%
+  mutate(CLASS_BASIN = ifelse(CLASS_BASIN == 'II_7', "II_7", CLASS))
+
+
+```
+
+
+```{r class II, eval=FALSE}
 
 unique(stationTable$CLASS)
 ```
 
 
-```{r class II pause}
-# Fix for Class II Tidal Waters in Chesapeake (bc complicated DO/temp/etc standard)
-stationTable1 <- dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, 
-                                                           SPSTDS, ID305B_1, ID305B_2, ID305B_3,
-                                                           STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin) %>%
-  left_join(WQSvalues, by = 'CLASS') %>%
-  mutate(`Dissolved Oxygen Min (mg/L)` = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA,`Dissolved Oxygen Min (mg/L)`),
-         `Dissolved Oxygen Daily Avg (mg/L)`  = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA, `Dissolved Oxygen Daily Avg (mg/L)`)) %>%
-  #mutate(`Dissolved Oxygen Min (mg/L)` = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA,
-  #       `Dissolved Oxygen Daily Avg (mg/L)`  = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA)) %>%
-  distinct(FDT_STA_ID, .keep_all = T)
 
-conventionals_HUC<- left_join(conventionals, stationTable1, by = "FDT_STA_ID")
+```{r class II pause, eval=FALSE}
+# Fix for Class II Tidal Waters in Chesapeake (bc complicated DO/temp/etc standard)
+#stationTable1 <- dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, 
+#                                                           SPSTDS, ID305B_1, ID305B_2, ID305B_3,
+#                                                           STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin) %>%
+#  left_join(WQSvalues, by = 'CLASS') %>%
+#  mutate(`Dissolved Oxygen Min (mg/L)` = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', #NA,`Dissolved Oxygen Min (mg/L)`),
+#         `Dissolved Oxygen Daily Avg (mg/L)`  = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA, `Dissolved Oxygen Daily Avg (mg/L)`)) %>%
+  #mutate(`Dissolved Oxygen Min (mg/L)` = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA,
+  #       `Dissolved Oxygen Daily Avg (mg/L)`  = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' #~ NA)) %>%
+#  distinct(FDT_STA_ID, .keep_all = T)
+
+#conventionals_HUC<- left_join(conventionals, stationTable1, by = "FDT_STA_ID")
 
 ```
 
@@ -136,10 +148,13 @@ If no class II waters then you can join directly by class
 
 ```{r no class II}
 
-conventionals_HUC<- left_join(conventionals, dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, 
+conventionals_HUC<- left_join(conventionals, dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS_BASIN, CLASS, 
                                                            SPSTDS, ID305B_1, ID305B_2, ID305B_3,
                                                            STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin), by='FDT_STA_ID') %>%
-  left_join(WQSvalues, by = 'CLASS')
+  left_join(WQSvalues, by = 'CLASS_BASIN') %>%
+  dplyr::select(-c(CLASS.y,CLASS_BASIN)) %>%
+  rename('CLASS' = 'CLASS.x')
+
 
 
 ```

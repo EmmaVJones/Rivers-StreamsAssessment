@@ -77,7 +77,11 @@ shinyServer(function(input, output, session) {
    #fix periods in column names from excel
     as_tibble() %>%
     dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance") %>%
-      mutate(VAHU6 = ifelse(is.na(VAHU6), Huc6_Vahu6, VAHU6)) # station table fix if necessary
+      mutate(VAHU6 = ifelse(is.na(VAHU6), Huc6_Vahu6, VAHU6)) %>% # station table fix if necessary
+      # New CLASS II fixes
+      mutate(CLASS_BASIN = paste(CLASS,substr(BASIN, 1,1), sep="_")) %>%
+      mutate(CLASS_BASIN = ifelse(CLASS_BASIN == 'II_7', "II_7", CLASS))
+    
   })
   
  
@@ -104,25 +108,32 @@ shinyServer(function(input, output, session) {
               popup= popupTable(huc6_filter(), zcol=c('VAHU6',"VaName","VAHU5","ASSESS_REG")))
     m@map %>% setView(st_bbox(huc6_filter())$xmax[[1]],st_bbox(huc6_filter())$ymax[[1]],zoom = 9) })
   
-  # Table of AUs and Stations within Selected VAHU6
+  # Table of AUs within Selected VAHU6
   output$AUSummary <-  DT::renderDataTable({ req(regionalAUs,AUs())
     DT::datatable(AUs() %>% st_set_geometry(NULL), rownames = FALSE, 
                   options= list(scrollX = TRUE, pageLength = nrow(AUs()), scrollY = "300px", dom='Bt')) 
   })
   
+  # Table of Stations within Selected VAHU6
   output$stationSummary <- DT::renderDataTable({
     req(region_filter(), basin_filter(), huc6_filter())
     z <- filter(conventionals, Huc6_Vahu6 %in% huc6_filter()$VAHU6) %>%
       distinct(FDT_STA_ID, .keep_all = TRUE) %>%
-      select(FDT_STA_ID:FDT_SPG_CODE, STA_LV2_CODE:STA_CBP_NAME)
-    DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "300px", dom='Bt'))  })
+      select(FDT_STA_ID:FDT_SPG_CODE, STA_LV2_CODE:STA_CBP_NAME) %>% 
+      mutate(`Analyzed By App` = ifelse(FDT_STA_ID %in% unique(stationTable()$FDT_STA_ID), 'yes','no'))
+    DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "300px", dom='Bt')) %>%
+      formatStyle('Analyzed By App', target = 'row', backgroundColor = styleEqual(c('yes','no'), c('lightgray', 'yellow')))
+  })
   
+  
+  # Button to visualize modal map of AUs in selected VAHU6
   observeEvent(input$reviewAUs,{
     showModal(modalDialog(
       title="Preview Assessment Units for Selected VAHU6",
       leafletOutput('AUmap'),
       easyClose = TRUE))  })
   
+  # modal map
   output$AUmap <- renderLeaflet({
     req(region_filter(), basin_filter(), huc6_filter())
     
@@ -156,31 +167,16 @@ shinyServer(function(input, output, session) {
   
   # Pull Conventionals data for selected AU on click
   conventionals_HUC <- eventReactive( input$pullHUCdata, {
-    
-    if("II" %in% unique(stationTable()$CLASS)){
-      stationTable1 <- dplyr::select(stationTable(), FDT_STA_ID, SEC, CLASS, 
-                                     SPSTDS, ID305B_1, ID305B_2, ID305B_3,
-                                     STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin) %>%
-        left_join(WQSvalues, by = 'CLASS') %>%
-        mutate(`Dissolved Oxygen Min (mg/L)` = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA,`Dissolved Oxygen Min (mg/L)`),
-               `Dissolved Oxygen Daily Avg (mg/L)`  = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA, `Dissolved Oxygen Daily Avg (mg/L)`)) %>%
-        #mutate(`Dissolved Oxygen Min (mg/L)` = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA,
-        #       `Dissolved Oxygen Daily Avg (mg/L)`  = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA)) %>%
-        distinct(FDT_STA_ID, .keep_all = T)
-    
-      
-      conventionals_HUC<- left_join(conventionals, stationTable1, by = "FDT_STA_ID")
-      return(conventionals_HUC)
-    }
-    
-    
     z <- filter(conventionals, Huc6_Vahu6 %in% huc6_filter()$VAHU6) %>%
-      left_join(dplyr::select(stationTable(), FDT_STA_ID, SEC, CLASS, SPSTDS,PWS, ID305B_1, ID305B_2, ID305B_3,
-                              STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin
-                              ), by='FDT_STA_ID')})
+      left_join(dplyr::select(stationTable(), FDT_STA_ID, SEC, CLASS_BASIN, CLASS, SPSTDS,PWS, ID305B_1, 
+                              ID305B_2, ID305B_3,STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin
+                              ), by='FDT_STA_ID') %>%
+      filter(!is.na(ID305B_1))
+    print(z)
+    return(z)})
   
   output$AUSelection_ <- renderUI({ req(conventionals_HUC())
-    selectInput('AUSelection', 'Assessment Unit Selection', choices = conventionals_HUC()$ID305B_1) })
+    selectInput('AUSelection', 'Assessment Unit Selection', choices = unique(conventionals_HUC()$ID305B_1))  })
   
   output$selectedAU <- DT::renderDataTable({req(conventionals_HUC(),input$AUSelection)
     z <- filter(regionalAUs, ID305B %in% input$AUSelection) %>% st_set_geometry(NULL) %>% as.data.frame()
@@ -200,7 +196,10 @@ shinyServer(function(input, output, session) {
     filter(conventionals_HUC(), ID305B_1 %in% input$AUSelection | 
              ID305B_2 %in% input$AUSelection | 
              ID305B_2 %in% input$AUSelection) %>% 
-      left_join(WQSvalues, by = 'CLASS') }) 
+      left_join(WQSvalues, by = 'CLASS_BASIN') %>%
+      dplyr::select(-c(CLASS.y,CLASS_BASIN)) %>%
+      rename('CLASS' = 'CLASS.x')
+    }) 
   
   stationData <- eventReactive( input$stationSelection, {
     filter(AUData(), FDT_STA_ID %in% input$stationSelection) })

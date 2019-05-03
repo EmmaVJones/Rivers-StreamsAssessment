@@ -42,7 +42,8 @@ assessmentCycle <- '2020'
 ##################################################################################################################
 
 
-WQSvalues <- tibble(CLASS = c('I',"II","II","III","IV","V","VI","VII"),
+WQSvalues <- tibble(CLASS_BASIN = c('I',"II","II_7","III","IV","V","VI","VII"),
+  CLASS = c('I',"II","II","III","IV","V","VI","VII"),
                     `Description Of Waters` = c('Open Ocean', 'Tidal Waters in the Chowan Basin and the Atlantic Ocean Basin',
                                                 'Tidal Waters in the Chesapeake Bay and its tidal tributaries',
                                                 'Nontidal Waters (Coastal and Piedmont Zone)','Mountainous Zone Waters',

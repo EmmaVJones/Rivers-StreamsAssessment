@@ -116,7 +116,8 @@ shinyUI(fluidPage(theme="yeti.css",
                                          h4('Official Station Results Table'),
                                          helpText('Note that WAT_TOX_VIO AND WAT_TOX_STAT are only reflecting ammonia analysis. Additionally, parameters are highlighted
                                                   in different colors to indicate further review may be necessary. Parameters highlighted in yellow have at least one 
-                                                  violation of a standard. Parameters highlighted in red exceed the 10.5% exceedance rate. Both scenarios warrant further
+                                                  violation of a standard. When BENTHIC_STAT is highlighed, it indicates there is benthic data present for that site
+                                                  and the assessor should review that information with the Regional Biologist. Parameters highlighted in red exceed the 10.5% exceedance rate. Both scenarios warrant further
                                                   investigation and may requre comments in the Station Table and ADB.'),
                                          DT::dataTableOutput('stationTableDataSummary'), br(), 
                                          h4('PWS violations'),

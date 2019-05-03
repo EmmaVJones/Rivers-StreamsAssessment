@@ -89,6 +89,7 @@ R&S_app_v3/GIS/
 R&S_app_v3/data/
 R&S_app_v3/appModules_Testing/
 R&S_app_v3/processedStationData/
+R&S_app_v3/Breaking/
 preprocessingRegionalData/data/
 preprocessingRegionalData/GIS/
 preprocessingRegionalData/preprocessedStationData/
@@ -107,3 +108,4 @@ CitizenNonAgency/2020IR Citizen Ambient4.14.19.xlsx
 CitizenNonAgency/2020IR NONA ambient.xlsx
 CitizenNonAgency/CitMonUniqueSamples.csv
 CitizenNonAgency/preliminaryCitMonSpatialData.html
+
