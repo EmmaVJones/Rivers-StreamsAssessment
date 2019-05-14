@@ -494,6 +494,152 @@ write.csv(conventionals_D_Region_Estuary, paste('processedStationData/final2020d
 ```
 
 
+
+
+## Split out riverine vs lake stations for assessment apps
+
+Once you fix any stations that are missing AU or WQS information, you can read the entire dataset back to this script and have the program split the station tables into stations that will be analyzed by the lake assessment app and those that will be assessed by the rivers and streams assessment app. **All stations that need to be assessed by the lake assessment app require a 'L' in either STATION_TYPE_1, STATION_TYPE_2, or STATION_TYPE_3 fields.** Packages and necessary datasets are reloaded in case you are not completing this step in the same session as the previous AU/WQS assignment session. 
+
+**Minimal user input: if the file or file location you want to upload differs from the example given, you will need to update it to work with your configuration.**
+
+If you are starting from a new session in R, you need to remind it what region you are working with. Use the same region code as specified above.
+
+```{r remindR}
+regionCode <- 'BRRO'
+#regionCode <- 'BRRO'
+```
+
+
+```{r splitRiversAndLakes, echo=F}
+library(tidyverse)
+
+# This is the station table you have edited including all riverine and lake stations with all necessary AU and WQS information fixed for your region.
+#RegionalResultsCombinedAll <- read_csv('processedStationData/final2020data/RegionalResultsCombined_final.csv')
+#RegionalResultsCombinedAll <-read_csv(' XXXX .csv')
+RegionalResultsCombinedAll <-read_csv('data/BRRO/RegionalResultsCombined_BRROFINAL.csv')
+
+# Quick duplicate check
+dupes <- RegionalResultsCombinedAll$FDT_STA_ID [duplicated(RegionalResultsCombinedAll$FDT_STA_ID )] 
+
+
+View(filter(RegionalResultsCombinedAll, FDT_STA_ID %in% dupes) %>% arrange(FDT_STA_ID))
+
+
+# 4ABMA002.00" "4ABWR019.75" "9-PKC004.65" "4ALVL001.11" are all cool because they have one entry with L in STATION_TYPE
+# designation and one that is still riverine. The ID305B column doesnt reflect this
+
+
+
+# 4APGG003.29 in there 4 times, doubled for lake and stream, everything else is okay to be duplicated
+RegionalResultsCombinedAll2 <- RegionalResultsCombinedAll %>% distinct() # gets rid of duplicated PGG003.29 rows
+
+View(filter(RegionalResultsCombinedAll2, FDT_STA_ID %in% dupes) %>% arrange(FDT_STA_ID))
+
+# All good now
+
+```
+
+
+```{r split out lakes}
+# Find all stations that have lake designations
+RegionalResultsCombinedAll3 <- mutate(RegionalResultsCombinedAll2, 
+                                      lakeStation = ifelse(grepl("L",STATION_TYPE_1) |
+                                                             grepl("L",STATION_TYPE_2) |
+                                                             grepl("L",STATION_TYPE_3), 'lake','river'))
+
+```
+
+
+Now time to fix manual WQS assignments.
+
+```{r WQS assignments}
+
+noWQS <- read_csv('data/BRRO/RegionalResultsCombined_NoWQS_BRRO.csv')
+
+fixWQS <- filter(RegionalResultsCombinedAll3, FDT_STA_ID %in% noWQS$FDT_STA_ID)
+fineWQS <- filter(RegionalResultsCombinedAll3, !(FDT_STA_ID %in% fixWQS$FDT_STA_ID))
+
+riverine <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/updatedWQS/updatedRiverineStatewide.shp')
+
+fixWQS_R <- filter(fixWQS, lakeStation == 'river') %>%
+  dplyr::select(-c(GNIS_ID:Shape_Leng)) %>% # drop columns that I will repopulate from spatial layer
+  left_join(riverine, by= "OBJECTID") %>%
+  dplyr::select(names(RegionalResultsCombinedAll3))
+
+rm(riverine)
+
+reservoirWQS <- st_read('GIS/updatedWQS/reservoir.shp') %>%
+   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+fixWQS_L <- filter(fixWQS, lakeStation == 'lake') %>%
+  dplyr::select(-c(GNIS_ID:Shape_Leng)) %>% # drop columns that I will repopulate from spatial layer
+  left_join(reservoirWQS, by= "OBJECTID") %>%
+  mutate(StreamType=NA) %>%
+  dplyr::select(names(RegionalResultsCombinedAll3)) 
+rm(reservoirWQS)
+
+
+names(fixWQS_R) == names(fixWQS_L)
+
+fixedWQS <- rbind(fixWQS_R, fixWQS_L)
+
+
+# Add back to whole 
+RegionalResultsCombinedAll4 <- rbind(fineWQS, fixedWQS)
+```
+
+
+
+
+Now split river and lake sites by AU designation. 
+
+
+```{r split up freshwater}
+lakeStations <- filter(RegionalResultsCombinedAll3, lakeStation=='lake') %>%
+  select(-c(lakeStation))
+
+# Make the rest riverine
+riverStations <- filter(RegionalResultsCombinedAll3, lakeStation != 'lake') %>%
+  select(-c(lakeStation))
+
+# Make sure we didnt lose anyone
+nrow(riverStations) + nrow(lakeStations) == nrow(RegionalResultsCombinedAll4)
+
+```
+
+
+Save out datasets
+
+```{r save out}
+
+# Save both for app use
+write.csv(lakeStations, paste('processedStationData/final2020data/RegionalResultsLake_',
+                                         regionCode,'FINAL.csv',sep=''), row.names=FALSE)
+write.csv(riverStations, paste('processedStationData/final2020data/RegionalResultsRiverine_',
+                                         regionCode,'FINAL.csv',sep=''), row.names=FALSE)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## Split out riverine vs lake stations for assessment apps
 
 Once you fix any stations that are missing AU or WQS information, you can read the entire dataset back to this script and have the program split the station tables into stations that will be analyzed by the lake assessment app and those that will be assessed by the rivers and streams assessment app. **All stations that need to be assessed by the lake assessment app require a 'L' in either STATION_TYPE_1, STATION_TYPE_2, or STATION_TYPE_3 fields.** Packages and necessary datasets are reloaded in case you are not completing this step in the same session as the previous AU/WQS assignment session. 

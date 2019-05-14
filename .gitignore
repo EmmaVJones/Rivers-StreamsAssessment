@@ -90,6 +90,17 @@ R&S_app_v3/data/
 R&S_app_v3/appModules_Testing/
 R&S_app_v3/processedStationData/
 R&S_app_v3/Breaking/
+R&S_app_v4/GIS/
+R&S_app_v4/data/
+R&S_app_v4/processedStationData/
+R&S_app_v4/renv/
+
+RiverineApp2020/GIS/
+RiverineApp2020/data/
+RiverineApp2020/appModules_Testing/
+RiverineApp2020/processedStationData/
+RiverineApp2020/renv/
+
 preprocessingRegionalData/data/
 preprocessingRegionalData/GIS/
 preprocessingRegionalData/preprocessedStationData/
@@ -109,3 +120,13 @@ CitizenNonAgency/2020IR NONA ambient.xlsx
 CitizenNonAgency/CitMonUniqueSamples.csv
 CitizenNonAgency/preliminaryCitMonSpatialData.html
 
+R&S_app_Distribution/
+R&S_app_Distribution.zip
+
+RiverineAssessment2020/
+
+preprocessingWorkday.zip
+R&S_portableApp_3.5.2.zip
+Riverine_portableApp_SWRO.zip
+Riverine_portableApp_v1.zip
+Riverine_portableApp_v2.zip

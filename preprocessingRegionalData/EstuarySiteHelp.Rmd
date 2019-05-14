@@ -1,0 +1,228 @@
+---
+title: "Preparing Data for Regions- AU and WQS to Estuary sites"
+output: 
+  html_document:
+    theme: yeti
+---
+
+Run in R 3.5.2
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(readxl))
+suppressPackageStartupMessages(library(sf))
+suppressPackageStartupMessages(library(shiny))
+suppressPackageStartupMessages(library(mapview))
+suppressPackageStartupMessages(library(leaflet))
+suppressPackageStartupMessages(library(miniUI))
+suppressPackageStartupMessages(library(DT))
+suppressPackageStartupMessages(library(RColorBrewer))
+
+source('snappingFunctions/snapFunctions.R') # snapping functions
+source('snappingFunctions/snapOrganizationFunctions_v2.R') # functions to do stuff with snapping functions
+```
+
+This document walks users through the requisite data preprocessing steps to prepare data for the 2020 IR Rivers and Streams Assessment and 2020 IR Lakes Assessment decision support applications. All initial steps are tested on 2016 and 2018 IR data and thus need to be rerun for 2020 data when those datasets become available.
+
+This document demonstrates the necessary steps to get any regional office up to speed with prerequisite data organization/processing steps to run the 2020 IR. 
+
+## Input data
+
+#### Conventionals
+Bring in Roger's conventionals dataset. I made it a csv before bringing it into RStudio to speed up rendering in app. 
+
+The conventionals dataset was first converted to a .csv in excel because my system struggled to read in entire dataset in .xlsx format.
+
+```{r conventionals2020, echo=F}
+# too big to read in using read_excel
+conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
+  filter(!is.na(Latitude)|!is.na(Longitude)) # remove sites without coordinates
+conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M") # turn character date format into proper date time format
+
+#View(conventionals) # to look at dataset use this command
+```
+
+Before we can do any spatial subsetting work, we need to make a dataset of all UNIQUE StationID's for the regional offices to work with. 
+
+```{r conventionalsDistinct, echo=FALSE}
+conventionals_D <- distinct(conventionals, FDT_STA_ID, .keep_all = T) %>%
+  select(FDT_STA_ID:FDT_SPG_CODE, Latitude:STA_CBP_NAME) %>%# drop data to avoid any confusion
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng, 
+rm(conventionals) # remove full conventionals dataset to save memory
+
+#View(conventionals_D) # to look at dataset use this command
+```
+
+
+Below is the table output. For this cycle, there are `r nrow(conventionals_D)` unique stations sampled.
+
+```{r conventionalsDistinctTable, echo=FALSE}
+#View(conventionals_D)
+```
+
+
+#### Statewide Assessment Layer
+
+Because we cannot trust the Deq_Region or STA_REC_CODE columns from conventionals to give us the stations each region needs to assess, we must do a spatial subset of all unique stations in an IR window (conventionals_D) by the Statewide Assessment Layer (filtered to our specified assessment region).
+
+First, read in the statewide assessment layer.
+
+```{r Statewide Assessment Layer, echo=FALSE, message=FALSE, warning=FALSE, results = 'hide'}
+assessmentLayer <- st_read('GIS/AssessmentRegions_VA84_basins.shp') %>%
+  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+```
+
+Now we are going to subset all unique stations from conventionals to a specific region. **This requires minimal user input**
+ 
+Below are the regional codes you need to choose from 
+```{r regionalCodes}
+unique(assessmentLayer$ASSESS_REG)
+```
+
+Insert one of those unique codes in quotes into the chunk below. The commented out script serves as an example for you.
+
+```{r establish regionCode}
+
+regionCode <- 'TRO'
+#regionCode <- 'BRRO'
+```
+
+
+Now we subset the layer based on your regionCode variable. We will use this variable again later in script.
+
+```{r DEQ region selection}
+assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == regionCode)
+#assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG ==    )
+#assessmentLayerSelection <- filter(assessmentLayer, ASSESS_REG == 'BRRO')
+```
+
+Now we can subset unique conventionals sites that fall into the assessment region we want.
+
+```{r conventionals_D_Region}
+conventionals_D_Region <- st_join(conventionals_D, assessmentLayerSelection, join = st_intersects) %>%
+  filter(!is.na(VAHU6)) %>% # only keep rows that joined
+  mutate(sameVAHU6 = ifelse(VAHU6 == Huc6_Vahu6, T, F)) %>% # double check the VAHU6 watershed matches from CEDS to actual spatial layer
+  dplyr::select(FDT_STA_ID:STA_CBP_NAME, Basin, VAHU6, sameVAHU6) %>% # just get columns we are interested in, compare here if desired
+  dplyr::select(FDT_STA_ID:STA_CBP_NAME,Basin) # get rid of the extra VAHU6 columns
+
+#rm(conventionals_D); rm(assessmentLayer) # clean up workspace
+
+cat(paste('Below are the ',nrow(conventionals_D_Region),' unique stations in the ', unique(assessmentLayerSelection$ASSESS_REG),' region.', sep=''))
+```
+
+```{r conventionals_D_Region adjustments}
+
+rm(assessmentLayer);rm(conventionals_D)
+
+```
+
+
+
+
+
+Bring in last cycle stations table. This is the custom version each region keeps because it has special information just for them.
+
+```{r stationTable}
+stationTable <- read_excel('data/TRO/2018_TRO_IRMonStasforR.xlsx') %>%
+  mutate(FDT_STA_ID= STATION_ID)
+```
+
+
+
+Join last cycle's station table to all site to find just estuary sites.
+
+```{r}
+
+conventionals_D_Region_Estuary <- left_join(conventionals_D_Region, stationTable, by='FDT_STA_ID') %>%
+  filter(!is.na(ID305B_1)) # get rid of all sites that didnt join
+
+```
+
+
+Now get the WQS information to each station.
+
+
+```{r}
+estuaryPolyWQS <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/updatedWQS/estuaryPolyWQS.shp') %>%
+   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+# find lake AUs, if Any
+estuaryWQS <- st_join(conventionals_D_Region_Estuary, estuaryPolyWQS, join = st_intersects) %>%
+  select(-c(OBJECTID_1)) # remove bonus occurrence of this field
+
+conventionals_D_Region_EstuaryAU_WQS <- filter(estuaryWQS, !is.na(OBJECTID))  # only keep rows where join successful
+
+moreWork <- filter(estuaryWQS, is.na(OBJECTID)) %>% # only keep rows where NOT join successful
+  select(-c(OBJECTID:Shape_Area))# remove columns we aim to add
+st_write(moreWork,paste('data/TRO/moreWorkEstuary.shp',sep=''))
+
+
+
+```
+
+
+So all the points left are outside estuary line range. Let's double check that these sites aren't already dealt with by the riverine app.
+
+Bring in riverine app sites to cross reference
+
+```{r}
+TRO <- read_csv('data/TRO/RegionalResultsCombined_TRO.csv') %>%
+  dplyr::select(FDT_STA_ID, Point.Unique.Identifier:Shape_Leng)
+
+moreWork2 <- left_join(moreWork, TRO, by= c("FDT_STA_ID"))
+
+moreWorkFixed <- filter(moreWork2, !is.na(OBJECTID))
+  
+moreMoreWork <- filter(moreWork2, is.na(OBJECTID))
+st_write(moreMoreWork,paste('data/TRO/moreMoreWorkEstuary.shp',sep=''))
+
+```
+
+Most of those are juuuust outside estuary polygons. Worth QAing.
+```{r}
+write.csv(moreMoreWork, 'data/TRO/moreMoreWorkEstuary.csv', row.names = F)
+```
+
+
+So now time to join the for sure fine estuary sites with raw conventionals data.
+
+```{r}
+conventionalsWithAU_WQS <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
+  filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates 
+  left_join(dplyr::select(conventionals_D_Region_EstuaryAU_WQS, FDT_STA_ID, ID305B_1:Shape_Area),
+            by='FDT_STA_ID') %>%
+  filter(!is.na(ID305B_1))
+```
+
+
+Get WQS limits on there.
+
+```{r}
+conventionalsWithAU_WQS1 <- mutate(conventionalsWithAU_WQS,
+                                   CLASS_BASIN = paste(CLASS,substr(BASIN, 1,1), sep="_")) %>%
+  mutate(CLASS_BASIN = ifelse(CLASS_BASIN == 'II_7', "II_7", CLASS))
+
+WQSvalues <- tibble(CLASS_BASIN = c('I',"II","II_7","III","IV","V","VI","VII"),
+  CLASS = c('I',"II","II","III","IV","V","VI","VII"),
+                    `Description Of Waters` = c('Open Ocean', 'Tidal Waters in the Chowan Basin and the Atlantic Ocean Basin',
+                                                'Tidal Waters in the Chesapeake Bay and its tidal tributaries',
+                                                'Nontidal Waters (Coastal and Piedmont Zone)','Mountainous Zone Waters',
+                                                'Stockable Trout Waters','Natural Trout Waters','Swamp Waters'),
+                    `Dissolved Oxygen Min (mg/L)` = c(5,4,NA,4,4,5,6,NA),
+                    `Dissolved Oxygen Daily Avg (mg/L)` = c(NA,5,NA,5,5,6,7,NA),
+                    `pH Min` = c(6,6,6.0,6.0,6.0,6.0,6.0,3.7),
+                    `pH Max` = c(9.0,9.0,9.0,9.0,9.0,9.0,9.0,8.0),
+                    `Max Temperature (C)` = c(NA, NA, NA, 32, 31, 21, 20, NA))
+
+
+
+conventionalsWithAU_WQS2 <- left_join(conventionalsWithAU_WQS1, WQSvalues, by = 'CLASS_BASIN') %>%
+  dplyr::select(-c(CLASS.y,CLASS_BASIN, geometry)) %>%
+  rename('CLASS' = 'CLASS.x') 
+
+write.csv(conventionalsWithAU_WQS2, 'data/TRO/conventionals_Estuary_AU_WQS.csv',row.names = F)
+```
+

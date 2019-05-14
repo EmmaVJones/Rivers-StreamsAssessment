@@ -31,7 +31,7 @@ The user will have to have all conventionals data, water column metals, and sedi
 #  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 
-#BRRO
+##BRRO no citmon
 regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineBRRO.shp') %>%
   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
@@ -42,7 +42,8 @@ regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS
 
 
 # Roger's conventionals data pull
-conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
+conventionals <- read_csv('data/final2020data/conventionals_final2020_citmon1.csv') %>%
+#conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
   filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
   rename("FDT_TEMP_CELCIUS"  ="TEMPERATURE_00010_DEGREES CENTIGRADE",
          "FDT_TEMP_CELCIUS_RMK" = "FDT_TEMP_CELCIUS_RMK",  
@@ -66,7 +67,8 @@ conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS
          "CHLORIDE" ="CHLORIDE_mg/L",
          "SULFATE_TOTAL" ="SULFATE_TOTAL_00945_mg/L",              
          "SULFATE_DISS" ="SULFATE_DISSOLVED_00946_mg/L")
-conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
+###### CHANGED 5/9/19
+#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M") # comment out if using with citmon data
 
 
 # Roger's metals data pull
@@ -87,9 +89,12 @@ stationTable <-
   ## TRO
   #read_csv('processedStationData/RegionalResultsRiverine_TROFINAL.csv') %>%
   
+   # BRRO WITH citmon
+  read_csv('processedStationData/RegionalResultsRiverine_BRROCitMon.csv') %>%
+ 
   
-  # BRRO
-  read_csv('processedStationData/RegionalResultsRiverine_BRROFINAL.csv') %>%
+  ## BRRO no citmon
+  #read_csv('processedStationData/RegionalResultsRiverine_BRROFINAL.csv') %>%
   
   # SWRO
   #read_csv('processedStationData/RegionalResultsRiverine_SWRO_updated.csv') %>%
@@ -223,7 +228,8 @@ for(i in 1:nrow(stationTable)){
                    countTP(stationData),
                    countchla(stationData),
                    # Chronic Ammonia printed in Comments
-                   data.frame(COMMENTS= paste('WAT_TOX fields indicate acute ammonia calculations. Chronic Ammonia Violations: ',chronicAmmonia[1,]))) %>%
+                   data.frame(COMMENTS= paste('WAT_TOX fields indicate acute ammonia calculations. Chronic Ammonia Violations: ',chronicAmmonia[1,],
+                                              citmonComment(stationData)))) %>%
     dplyr::select(-ends_with('exceedanceRate'))
   
   # manipulate ID305B_1 to get DCR11 watershed ID
