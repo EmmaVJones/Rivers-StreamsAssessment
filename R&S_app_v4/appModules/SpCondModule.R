@@ -1,9 +1,11 @@
+
 SpCondPlotlySingleStationUI <- function(id){
   ns <- NS(id)
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('SpCond_oneStationSelectionUI')),
+      fluidRow(column(6,uiOutput(ns('SpCond_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('SpCondplotly'))  )
   )
 }
@@ -21,7 +23,32 @@ SpCondPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
   
   SpCond_oneStation <- reactive({
     req(ns(input$SpCond_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$SpCond_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$SpCond_oneStationSelection)  %>%
+      filter(!is.na(FDT_SPECIFIC_CONDUCTANCE))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(SpCond_oneStation())
+    parameterFilter <- dplyr::select(SpCond_oneStation(), FDT_STA_ID:FDT_COMMENT, FDT_SPECIFIC_CONDUCTANCE, FDT_SPECIFIC_CONDUCTANCE_RMK)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('FDT_SPECIFIC_CONDUCTANCE','FDT_SPECIFIC_CONDUCTANCE_RMK'), 'FDT_SPECIFIC_CONDUCTANCE_RMK', 
+                  backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
+  
   
   output$SpCondplotly <- renderPlotly({
     req(input$SpCond_oneStationSelection, SpCond_oneStation())
@@ -54,3 +81,4 @@ SpCondPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
   })
   
 }
+

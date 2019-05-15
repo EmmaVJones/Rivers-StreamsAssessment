@@ -35,7 +35,7 @@ conventionals <- read_csv('data/final2020data/conventionals_final2020_citmon1.cs
 
 WCmetals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-WATER_METALS_VALUES_20190207_EVJ.csv')
 Smetals <- read_excel('data/final2020data/CEDSWQM_2020_IR_DATA-CEDSWQM_SEDIMENT_20190213.xlsx') %>%
-  dplyr::select(FDT_STA_ID:ZINC..70, COMMENT..89)
+  dplyr::select(FDT_STA_ID:ZINC...70, COMMENT...89)
 names(Smetals) <- gsub( "[..].*", "", names(Smetals)) # remove anything after .. in name
 
 # Statewide Assessment layer
@@ -350,7 +350,7 @@ shinyServer(function(input, output, session) {
   ## Temperature Sub Tab ##------------------------------------------------------------------------------------------------------
   
   callModule(temperaturePlotlySingleStation,'temperature', AUData, stationSelected)
-  callModule(temperatureExceedanceAnalysis,'temperature_ExceedanceAnalysis', AUData)
+  #callModule(temperatureExceedanceAnalysis,'temperature_ExceedanceAnalysis', AUData)
   
   ## pH Sub Tab ##------------------------------------------------------------------------------------------------------
   
@@ -359,7 +359,7 @@ shinyServer(function(input, output, session) {
   
   ## DO Sub Tab ##------------------------------------------------------------------------------------------------------
   callModule(DOPlotlySingleStation,'DO', AUData, stationSelected)
-  callModule(DOExceedanceAnalysis,'DO_ExceedanceAnalysis', AUData)
+  #callModule(DOExceedanceAnalysis,'DO_ExceedanceAnalysis', AUData)
   
   ## Specific Conductance Sub Tab ##------------------------------------------------------------------------------------------------------
   callModule(SpCondPlotlySingleStation,'SpCond', AUData, stationSelected)

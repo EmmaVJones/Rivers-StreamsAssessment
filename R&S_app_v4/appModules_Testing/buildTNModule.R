@@ -15,25 +15,49 @@ TNPlotlySingleStationUI <- function(id){
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('TN_oneStationSelectionUI')),
-      plotlyOutput(ns('TNplotly'))  )
+      fluidRow(column(6,uiOutput(ns('TN_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
+      plotlyOutput(ns('TNplotly')) )
   )
 }
-
 
 TNPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedAbove){
   ns <- session$ns
   
   # Select One station for individual review
   output$TN_oneStationSelectionUI <- renderUI({
-    req(stationSelectedAbove)
-    selectInput(ns('TN_oneStationSelection'),strong('Select Station to Review'),choices= sort(unique(c(stationSelectedAbove(),AUdata()$FDT_STA_ID))),#unique(AUdata())$FDT_STA_ID,
-                width='300px', selected = stationSelectedAbove())})# "2-JMS279.41" )})
-  
+    req(AUdata)
+    selectInput(ns('TN_oneStationSelection'),strong('Select Station to Review'),
+                choices= sort(unique(c(stationSelectedAbove(),AUdata()$FDT_STA_ID))), # Change this based on stationSelectedAbove
+                width='300px', selected = stationSelectedAbove())})
   
   TN_oneStation <- reactive({
     req(ns(input$TN_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$TN_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$TN_oneStationSelection) %>%
+      filter(!is.na(NITROGEN))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(TN_oneStation())
+    parameterFilter <- dplyr::select(TN_oneStation(), FDT_STA_ID:FDT_COMMENT, NITROGEN, RMK_NITROGEN)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('NITROGEN','RMK_NITROGEN'), 'RMK_NITROGEN', 
+                  backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
   
   output$TNplotly <- renderPlotly({
     req(input$TN_oneStationSelection, TN_oneStation())

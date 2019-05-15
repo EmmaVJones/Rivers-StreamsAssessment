@@ -62,8 +62,7 @@ pHPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
     
     DT::datatable(parameterFilter, rownames = FALSE, 
                   options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
-      formatStyle(c('FDT_FIELD_PH','FDT_FIELD_PH_RMK'), 'FDT_FIELD_PH_RMK', 
-                  backgroundColor = styleEqual(c(NA, 'Level III','Level II', 'Level I'), c('lightgray', 'lightgray', 'yellow','orange')))
+      formatStyle(c('FDT_FIELD_PH','FDT_FIELD_PH_RMK'), 'FDT_FIELD_PH_RMK', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
   })
   
   output$pHplotly <- renderPlotly({
@@ -172,7 +171,7 @@ server <- function(input,output,session){
   stationSelected <- reactive({input$stationSelection})
   
   
-  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% '2-JKS018.68')})# '4APKP-4-DRBA' )})#'2-JKS018.68')}) 
+  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% c('2-JKS018.68','4APKP-4-DRBA' ))})
   #AUData <- reactive({filter(conventionals_HUC, ID305B_1 %in% 'VAW-H01R_JMS04A00' | 
   #                             ID305B_2 %in% 'VAW-H01R_JMS04A00' | 
   #                             ID305B_2 %in% 'VAW-H01R_JMS04A00')%>% 

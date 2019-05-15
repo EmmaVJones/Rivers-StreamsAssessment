@@ -2,97 +2,67 @@
 Version=0.4.0-20
 
 [R]
-Version=3.5.2
+Version=3.6.0
 Repositories=
-	CRAN=https://cran.rstudio.com/
+	CRAN=https://mirrors.nics.utk.edu/cran/
 
 [R/Package/R6]
 Package=R6
 Version=2.4.0
 Source=CRAN
-Hash=f542e196103d43e270c2f12769143a4c
+Hash=4f39f15779e55cb06d47e0904b14522c
 
-[R/Package/askpass]
-Package=askpass
-Version=1.1
+[R/Package/assertthat]
+Package=assertthat
+Version=0.2.1
 Source=CRAN
-Hash=8cf7584c364ebfbd3b84154a0fd0c18d
+Hash=47c5d99ca6da06d75f480d96b9f96422
 
-[R/Package/covr]
-Package=covr
-Version=3.2.1
+[R/Package/cli]
+Package=cli
+Version=1.1.0
 Source=CRAN
-Hash=572d52f971374b8fd6b77b67bb8d9bbb
+Hash=82644afba0ff56a08730bc4fc1e6448f
 
 [R/Package/crayon]
 Package=crayon
 Version=1.3.4
 Source=CRAN
-Hash=033ebafa3d6726ca233a12c135265f70
-
-[R/Package/curl]
-Package=curl
-Version=3.3
-Source=CRAN
-Hash=aaea072ce2cf5f388446650b475874a8
+Hash=900c1d2c8e4c61b6a1814331ec34e19a
 
 [R/Package/digest]
 Package=digest
 Version=0.6.18
 Source=CRAN
-Hash=3a0646cd1e9116f7bf03ca88e1e562f8
-
-[R/Package/httr]
-Package=httr
-Version=1.4.0
-Source=CRAN
-Hash=dacc39276974a4b2342659368a7b623b
-
-[R/Package/jsonlite]
-Package=jsonlite
-Version=1.6
-Source=CRAN
-Hash=9098f8f59907a1180f3a2ff469cd67f2
-
-[R/Package/lazyeval]
-Package=lazyeval
-Version=0.2.2
-Source=CRAN
-Hash=a230d72a95d16715973ad2ae0664cfc0
+Hash=c53b5dd4fbd6054e2ef6b8e93f34192f
 
 [R/Package/magrittr]
 Package=magrittr
 Version=1.5
 Source=CRAN
-Hash=1063976a6affe09eb75fc2927b8d4d9d
+Hash=c079d05aaae9556f4dbeea615a764871
 
-[R/Package/mime]
-Package=mime
-Version=0.6
+[R/Package/praise]
+Package=praise
+Version=1.0.0
 Source=CRAN
-Hash=976803fdcdc85d33c36218b44156e1c1
+Hash=ae951d265e39edae12a065f1df18de91
 
-[R/Package/openssl]
-Package=openssl
-Version=1.3
+[R/Package/rlang]
+Package=rlang
+Version=0.3.4
 Source=CRAN
-Hash=54c10fdc44f59c4a2ee530ff8bc0073b
+Hash=cbb4e132f8198b1f9b20a0bfc5fa07ab
 
-[R/Package/rex]
-Package=rex
-Version=1.1.2
+[R/Package/testthat]
+Package=testthat
+Version=2.1.1
 Source=CRAN
-Hash=b7ab4f837f2fcd91b2ebbe5583d4bb70
-
-[R/Package/sys]
-Package=sys
-Version=3.2
-Source=CRAN
-Hash=4032671712f4fecd4ff20395dbf4de48
+Hash=c68e09c9e585afef9a223710a2b08840
 
 [R/Package/withr]
 Package=withr
 Version=2.1.2
 Source=CRAN
-Hash=6ae393ed66a7e7a71fccd5ca0dc8b698
+Hash=95b4999c4a7610bbccfd3b5d37fbaf6b
 

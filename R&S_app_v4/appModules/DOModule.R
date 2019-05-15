@@ -3,7 +3,8 @@ DOPlotlySingleStationUI <- function(id){
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('DO_oneStationSelectionUI')),
+      fluidRow(column(6,uiOutput(ns('DO_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('DOplotly')),
       br(),hr(),br(),
       fluidRow(
@@ -30,7 +31,31 @@ DOPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
   
   DO_oneStation <- reactive({
     req(ns(input$DO_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$DO_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$DO_oneStationSelection) %>%
+      filter(!is.na(DO))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(DO_oneStation())
+    parameterFilter <- dplyr::select(DO_oneStation(), FDT_STA_ID:FDT_COMMENT, DO, DO_RMK)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('DO','DO_RMK'), 'DO_RMK', 
+                  backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
   
   output$DOplotly <- renderPlotly({
     req(input$DO_oneStationSelection, DO_oneStation())
@@ -42,7 +67,7 @@ DOPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
     box2 <- data.frame(x = c(min(dat$SampleDate), min(dat$SampleDate), max(dat$SampleDate),max(dat$SampleDate)), y = c(8, 10, 10, 8))
     box3 <- data.frame(x = c(min(dat$SampleDate), min(dat$SampleDate), max(dat$SampleDate),max(dat$SampleDate)), y = c(7, 8, 8, 7))
     box4 <- data.frame(x = c(min(dat$SampleDate), min(dat$SampleDate), max(dat$SampleDate),max(dat$SampleDate)), y = c(0, 7, 7, 0))
-
+    
     plot_ly(data=box1)%>%
       add_polygons(x = ~SampleDate, y = ~y, data = box1, fillcolor = "#0072B2",opacity=0.6, line = list(width = 0),
                    hoverinfo="text", name =paste('No Probability of Stress to Aquatic Life')) %>%
@@ -90,7 +115,7 @@ DOExceedanceAnalysisUI <- function(id){
        If no records are presented in the table below, then no data falls below the DO minimum.'),
     tableOutput(ns('DOMinTableAU')), br(), hr(), br(), 
     tableOutput(ns('DODailyAverageTableAU'))
-    )
+  )
 }
 
 

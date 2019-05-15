@@ -156,7 +156,8 @@ lastXyears <- function(dataFrame, dateTimeColumn, nYears, consecutive){ # not bo
 
 #Max Temperature Exceedance Function
 temp_Assessment <- function(x){
-  temp <- dplyr::select(x,FDT_DATE_TIME,FDT_TEMP_CELCIUS, `Max Temperature (C)`)%>% # Just get relevant columns, 
+  temp <- dplyr::select(x,FDT_DATE_TIME,FDT_TEMP_CELCIUS, FDT_TEMP_CELCIUS_RMK, `Max Temperature (C)`)%>% # Just get relevant columns, 
+    filter(!(FDT_TEMP_CELCIUS_RMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(FDT_TEMP_CELCIUS))%>% #get rid of NA's
     mutate(TemperatureExceedance=ifelse(FDT_TEMP_CELCIUS > `Max Temperature (C)`,T,F))%>% # Identify where above max Temperature, 
     filter(TemperatureExceedance==TRUE) # Only return temp measures above threshold
@@ -165,7 +166,8 @@ temp_Assessment <- function(x){
 
 # Exceedance Rate Temperature
 exceedance_temp <- function(x){
-  temp <- dplyr::select(x,FDT_DATE_TIME,FDT_TEMP_CELCIUS,`Max Temperature (C)`)%>% # Just get relevant columns, 
+  temp <- dplyr::select(x,FDT_DATE_TIME,FDT_TEMP_CELCIUS,FDT_TEMP_CELCIUS_RMK,`Max Temperature (C)`)%>% # Just get relevant columns, 
+    filter(!(FDT_TEMP_CELCIUS_RMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(FDT_TEMP_CELCIUS)) #get rid of NA's
   temp_Assess <- temp_Assessment(x)
   
@@ -203,7 +205,8 @@ exceedance_pH <- function(x){
 
 # DO exceedance function
 DO_Assessment_Min <- function(x){ 
-  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME, FDT_DATE_TIME2,FDT_DEPTH,DO,`Dissolved Oxygen Min (mg/L)`,`Dissolved Oxygen Daily Avg (mg/L)`)%>% # Just get relevant columns, 
+  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME, FDT_DATE_TIME2,FDT_DEPTH,DO,DO_RMK, `Dissolved Oxygen Min (mg/L)`,`Dissolved Oxygen Daily Avg (mg/L)`)%>% # Just get relevant columns, 
+    filter(!(DO_RMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(DO)) %>% 
     mutate(DOExceedanceMin=ifelse(DO < `Dissolved Oxygen Min (mg/L)`,T,F))%>% # Identify where above max Temperature, 9VAC25-260-50 ClassIII= 32C
     filter(DOExceedanceMin==TRUE) %>% # Only return DO measures below threshold
@@ -212,7 +215,8 @@ DO_Assessment_Min <- function(x){
 
 # Daily Average exceedance function
 DO_Assessment_DailyAvg <- function(x){ 
-  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME, FDT_DATE_TIME2,FDT_DEPTH,DO,`Dissolved Oxygen Min (mg/L)`,`Dissolved Oxygen Daily Avg (mg/L)`)%>% # Just get relevant columns, 
+  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME, FDT_DATE_TIME2,FDT_DEPTH,DO,DO_RMK,`Dissolved Oxygen Min (mg/L)`,`Dissolved Oxygen Daily Avg (mg/L)`)%>% # Just get relevant columns, 
+    filter(!(DO_RMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(DO)) %>% #get rid of NA's
     mutate(date = as.Date(FDT_DATE_TIME2, format="%m/%d/%Y")) %>% 
     group_by(date) %>%
@@ -226,7 +230,8 @@ DO_Assessment_DailyAvg <- function(x){
 
 # Exceedance Rate DO, for all samples
 exceedance_DO <- function(x){
-  DO <- dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME, FDT_DATE_TIME2,FDT_DEPTH,DO,`Dissolved Oxygen Min (mg/L)`,`Dissolved Oxygen Daily Avg (mg/L)`)%>% # Just get relevant columns, 
+  DO <- dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME, FDT_DATE_TIME2,FDT_DEPTH,DO, DO_RMK, `Dissolved Oxygen Min (mg/L)`,`Dissolved Oxygen Daily Avg (mg/L)`)%>% # Just get relevant columns, 
+    filter(!(DO_RMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(DO)) #get rid of NA's
   DO_Assess <- DO_Assessment_Min(x)
   DO_results <- assessmentDetermination(DO,DO_Assess,"Dissolved Oxygen","Aquatic Life")
@@ -235,7 +240,8 @@ exceedance_DO <- function(x){
 
 # Exceedance Rate DO, for daily average samples
 exceedance_DO_DailyAvg <- function(x){
-  DO <- dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME, FDT_DATE_TIME2,FDT_DEPTH,DO,`Dissolved Oxygen Min (mg/L)`,`Dissolved Oxygen Daily Avg (mg/L)`)%>% # Just get relevant columns, 
+  DO <- dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME, FDT_DATE_TIME2,FDT_DEPTH,DO, DO_RMK,`Dissolved Oxygen Min (mg/L)`,`Dissolved Oxygen Daily Avg (mg/L)`)%>% # Just get relevant columns, 
+    filter(!(DO_RMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(DO)) %>% #get rid of NA's
     mutate(date = as.Date(FDT_DATE_TIME2, format="%m/%d/%Y")) %>% 
     group_by(date) %>%
@@ -250,13 +256,15 @@ exceedance_DO_DailyAvg <- function(x){
 #### TP semi Assessment Functions ---------------------------------------------------------------------------------------------------
 
 countTP <- function(x){
-  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME,PHOSPHORUS)%>% # Just get relevant columns
+  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME,PHOSPHORUS, RMK_PHOSPHORUS)%>% # Just get relevant columns
+    filter(!(RMK_PHOSPHORUS %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(PHOSPHORUS)) %>% #get rid of NA's
     summarize(NUT_TP_VIO= NA, NUT_TP_SAMP= n(), NUT_TP_STAT= NA)
 }
 
 TPexceed <- function(x){
-  TP <- dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME,PHOSPHORUS) %>%
+  TP <- dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME,PHOSPHORUS, RMK_PHOSPHORUS) %>%
+    filter(!(RMK_PHOSPHORUS %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(PHOSPHORUS)) %>% #get rid of NA's
     mutate(limit = 0.2) %>%
     rename(parameter = !!names(.[3])) %>% # rename columns to make functions easier to apply
@@ -276,6 +284,7 @@ countchla <- function(x){
 #### E.coli OLD Assessment Functions ---------------------------------------------------------------------------------------------------
 
 bacteria_ExceedancesGeomeanOLD <- function(x, bacteriaType, geomeanLimit){
+  
   if(nrow(x) > 0){
     suppressWarnings(mutate(x, SampleDate = format(FDT_DATE_TIME2,"%m/%d/%y"), # Separate sampling events by day
                             previousSample=lag(SampleDate,1),previousSampleBacteria=lag(get(bacteriaType),1)) %>% # Line up previous sample with current sample line
@@ -299,10 +308,11 @@ bacteria_ExceedancesSTV_OLD <- function(x, STVlimit){
 
 # How bacteria is assessed
 bacteria_Assessment_OLD <- function(x, bacteriaType, geomeanLimit, STVlimit){
+  if(nrow(x)>1){
   bacteria <- dplyr::select(x,FDT_DATE_TIME2,bacteriaType)%>% # Just get relavent columns, 
-    filter(!is.na(get(bacteriaType))) #get rid of NA's
-  # Geomean Analysis (if enough n)
-  if(nrow(bacteria)>0){
+      filter(!is.na(get(bacteriaType))) #get rid of NA's
+   # Geomean Analysis (if enough n)
+   if(nrow(bacteria)>0){
     bacteriaGeomean <- bacteria_ExceedancesGeomeanOLD(bacteria, bacteriaType, geomeanLimit) %>%     
       distinct(sampleMonthYear, .keep_all = T) %>%
       filter(samplesPerMonth > 4, geoMeanCalendarMonth > limit) %>% # minimum sampling rule for geomean to apply
@@ -316,12 +326,35 @@ bacteria_Assessment_OLD <- function(x, bacteriaType, geomeanLimit, STVlimit){
     bacteriaSSM <- bacteria_ExceedancesSTV_OLD(bacteria, STVlimit) 
     SSMresults <- quickStats(bacteriaSSM, bacteriaType) %>% mutate(`Assessment Method` = 'Old Single Sample Maximum')
     return( rbind(geomeanResults, SSMresults) )
+   }
   }
   
 }
 
-conventionalsToBacteria <- function(x, bacteriaType){
-  z <- dplyr::select(x, FDT_STA_ID, FDT_DATE_TIME2, bacteriaType) %>%
+
+citmonOutOfBacteria <- function(x, bacteriaType, bacteriaTypeRMK){
+  
+  bacteriaType1 <- enquo(bacteriaType)
+  bacteriaTypeRMK1 <- enquo(bacteriaTypeRMK)
+  
+  z <- #dplyr:: select(x, FDT_DATE_TIME2, !!bacteriaType1, !!bacteriaTypeRMK1) %>% # Just get relavent columns,
+    filter(x, !( !!bacteriaTypeRMK1  %in% c('Level II', 'Level I')) )
+  
+  if(nrow(z) == 0){
+    z <- x[0,]
+    return(z)
+  
+    }else{ return(z)}
+}  
+
+#citmonOutOfBacteria(x, E.COLI, ECOLI_RMK)
+
+
+
+
+conventionalsToBacteria <- function(x, bacteriaType){#}, bacteriaTypeRMK){
+  z <- dplyr::select(x, FDT_STA_ID, FDT_DATE_TIME2, bacteriaType, bacteriaTypeRMK) %>%
+    filter(!(!! bacteriaTypeRMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     rename(ID = FDT_STA_ID, `Date Time` = FDT_DATE_TIME2, Value = bacteriaType) %>%
     filter(!is.na(Value))
   z$`Date Time` <- as.Date(z$`Date Time`)
@@ -334,6 +367,7 @@ conventionalsToBacteria <- function(x, bacteriaType){
 
 # Calculate limits and return dataframe with original data and limits
 acuteNH3limit <- function(x){
+  if(nrow(x)==0){return(NULL)}
   # Trout absent scenario, freshwater
   if(unique(x$CLASS) %in% c("II","III","IV","VII")){
     return(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_FIELD_PH, AMMONIA) %>%
@@ -601,7 +635,8 @@ quickStats <- function(parameterDataset, parameter){
 
 #Max Temperature Exceedance Function
 tempExceedances <- function(x){
-  temp <- dplyr::select(x,FDT_DATE_TIME,FDT_TEMP_CELCIUS, `Max Temperature (C)`)%>% # Just get relevant columns, 
+  temp <- dplyr::select(x,FDT_DATE_TIME,FDT_TEMP_CELCIUS, FDT_TEMP_CELCIUS_RMK, `Max Temperature (C)`)%>% # Just get relevant columns, 
+    filter(!(FDT_TEMP_CELCIUS_RMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(FDT_TEMP_CELCIUS))%>% #get rid of NA's
     rename(parameter = !!names(.[2]), limit = !!names(.[3])) %>% # rename columns to make functions easier to apply
     mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above max Temperature, 
@@ -623,7 +658,8 @@ pHExceedances <- function(x){
 
 
 DOExceedances_Min <- function(x){
-  DO <- dplyr::select(x,FDT_DATE_TIME2,DO,`Dissolved Oxygen Min (mg/L)`)%>% # Just get relevant columns, 
+  DO <- dplyr::select(x,FDT_DATE_TIME2,DO,DO_RMK,`Dissolved Oxygen Min (mg/L)`)%>% # Just get relevant columns, 
+    filter(!(DO_RMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     filter(!is.na(DO)) %>% 
     rename(parameter = !!names(.[2]), limit = !!names(.[3])) %>% # rename columns to make functions easier to apply
     mutate(exceeds = ifelse(parameter < limit, T, F)) # Identify where below min DO 
@@ -748,8 +784,11 @@ citmonParameterCount <- function(x, parameter, parameterRemark){
 citmonComment <- function(x){
   if(unique(x$STA_LV3_CODE) == 'CMON'){
     return(
-      cat(citmonParameterCount(x, "FDT_FIELD_PH", "FDT_FIELD_PH_RMK"),
-            citmonParameterCount(x, "DO", "DO_RMK")))
+      cat(citmonParameterCount(x, "FDT_TEMP_CELCIUS", "FDT_TEMP_CELCIUS_RMK"),
+          citmonParameterCount(x, "FDT_FIELD_PH", "FDT_FIELD_PH_RMK"),
+          citmonParameterCount(x, "DO", "DO_RMK"),
+          citmonParameterCount(x, "AMMONIA", "RMK_AMMONIA"),
+          citmonParameterCount(x, "PHOSPHORUS", "RMK_PHOSPHORUS")))
   } else {
     return(NULL)
   }

@@ -318,6 +318,108 @@ rm(Regional_Sites_AU) # clean up workspace
 ```
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Assessment QA time out
+
+So those above datasets need to be thoroughly reviewed and QAed to make sure each station is in fact unique and have all the correct associated data with it. When that is done, you can bring the data back in.
+
+```{r citmon timeIn}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(readxl))
+suppressPackageStartupMessages(library(sf))
+suppressPackageStartupMessages(library(shiny))
+suppressPackageStartupMessages(library(mapview))
+suppressPackageStartupMessages(library(leaflet))
+suppressPackageStartupMessages(library(miniUI))
+suppressPackageStartupMessages(library(DT))
+suppressPackageStartupMessages(library(RColorBrewer))
+
+source('snappingFunctions/snapFunctions.R') # snapping functions
+source('snappingFunctions/snapOrganizationFunctions_citmon.R') # functions to do stuff with snapping functions
+
+citMonAU <- read_excel('processedStationData/citmon/CitMon_stations_QA_Final.xlsx','Paula_NEW')
+
+monitor <- read_excel('processedStationData/citmon/MONITOR.xlsx')
+```
+ 
+First let's delete any weird things they want gone and then it is time to correct the FDT_STA_ID based on Mary and Paula's calls. We will replace the FDT_STA_ID assigned by James with Mary and Paula's call and then update all the associated information accordingly based on the MONITOR database.
+
+```{r delete weird things}
+# get the rows they want deleted
+citMonAU1 <- filter(citMonAU, !(grepl('delete',citMonAU$`AllMon station`)))
+```
+
+```{r split based on Mary/paula overrule}
+fine <- filter(citMonAU1, is.na(`AllMon station`)) %>%
+  dplyr::select(-c(`AllMon station`))
+notfine <- filter(citMonAU1, !is.na(`AllMon station`))
+```
+
+Start fixing the not fine.
+
+```{r fixNotFine}
+notfine1 <- rename(notfine, 'STATION' = 'AllMon station') %>%
+  left_join(monitor, by='STATION') 
+
+# fix broken sites now
+
+notfine2 <- filter(notfine1, !is.na(TRECORD)) %>% # only keep things that worked
+  mutate(FDT_STA_ID = STATION, STA_DESC = DESCRIP, Latitude = MDEC_LAT, Longitude = MDECLONG) %>%
+  dplyr::select(`AU to connect to`,names(fine))
+
+
+fineTogether <- rbind(fine, notfine2) %>%
+  dplyr::select(-c(Group_Station_ID,STATION_ID:`...102`))
+
+rm(fine);rm(notfine);rm(notfine1);rm(notfine2)
+```
+
+Now join back to station table from last cycle to get better AU information since mary/paula changed some AUs.
+
+```{r fix more station info}
+regionCode <- 'BRRO'
+
+previousCycleStationTable <- read_excel('data/final2020data/tbl_ir_mon_stations.xlsx') %>%
+  filter(REGION == regionCode)
+
+fineTogether1 <- mutate(fineTogether, STATION_ID= FDT_STA_ID) %>%
+  left_join(previousCycleStationTable, by= 'STATION_ID') %>%
+  mutate(ID305B_1= ifelse(is.na(ID305B_1),`AU to connect to`,ID305B_1)) %>%
+  dplyr::select(-`AU to connect to`)
+
+
+cit <- fineTogether1 %>%
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
+
+
+rm(monitor);rm(previousCycleStationTable); rm(citMonAU); rm(fineTogether)
+```
+
+
+So now we have a dataset that has corrected station ID's and AU's. Note that there are still duplicated entries, but that is good until I limit out the raw data by the rowname field.
+
+
+Now time to do WQS things.
+
+
+
+
 ### WQS Organization
 
 Now all the stations need water quality standards attached as the final data organization step in order to be used by the assessment apps. Regardless of whether or not a site snapped to an AU, the report will walk users through connecting each site to WQS features. First, we will start with lakes to save the computationally heavier stream snapping tool for only the sites that need it.
@@ -328,13 +430,13 @@ We will bring in the updated WQS reservoir layer, to attach to stations that are
 
 ```{r find Lacustrine AUs, echo=F}
 # Bring reservoir AUs back in just for ID305B options
-reservoirAUs <- as.character(st_read('GIS/draft2018_spatialData/va_2018_aus_reservoir.shp')$ID305B)
+#reservoirAUs <- as.character(st_read('GIS/draft2018_spatialData/va_2018_aus_reservoir.shp')$ID305B)
 
 # Method 1: use lake AU's
 # Separate lake stations from stream stations
 # this is one way, but since we have Paula's official station table, we will use that instead
-reservoirStations <- filter(conventionals_D_Region_AU, ID305B_1 %in% unique(reservoirAUs) |
-                              ID305B_2 %in% unique(reservoirAUs) | ID305B_3 %in% unique(reservoirAUs))
+#reservoirStations <- filter(conventionals_D_Region_AU, ID305B_1 %in% unique(reservoirAUs) |
+#                              ID305B_2 %in% unique(reservoirAUs) | ID305B_3 %in% unique(reservoirAUs))
 
 # Method 2: Look for 'L' designation in station type codes
 #reservoirStations <- filter(conventionals_D_Region_AU,  grepl("L",STATION_TYPE_1) | grepl("L",STATION_TYPE_2) |
@@ -345,6 +447,19 @@ reservoirStations <- filter(conventionals_D_Region_AU, ID305B_1 %in% unique(rese
 # but the safest method for BRRO is to just use Paula's stations table
 #reservoirStations <- filter(conventionals_D_Region_AU, FDT_STA_ID %in% stationTableLake$STATION_ID)
 
+
+
+# Use Assessor defined AU's to figure out if lake or stream
+
+cit$RorL <- NA
+for(i in 1: nrow(cit)){
+  cit$RorL[i] <- substr(strsplit(as.character(cit$ID305B_1[i]), '-')[[1]][2] ,4,4)
+  
+}
+
+
+# split into riverine or lake
+reservoirStations <- filter(cit, RorL == 'L')
 
 # Bring in reservoir WQS
 reservoirWQS <- st_read('GIS/updatedWQS/reservoir.shp') %>%
@@ -358,12 +473,22 @@ reservoirStationsWQS <- st_join(reservoirStations, reservoirWQS, join = st_inter
 # add back in duplicate issues where lacustrine and riverine, important where stations used for both riverine and lacustrine assessments
 notInReservoirWQS <- unique(reservoirStations$FDT_STA_ID)[!( unique(reservoirStations$FDT_STA_ID) %in% unique(reservoirStationsWQS$FDT_STA_ID))]
 
+
+
+
+problem <- filter(reservoirStations, FDT_STA_ID %in% notInReservoirWQS)
+st_write(problem,'processedStationData/citmon/lakeStationsNotInLakeWQS.shp')
+
+
+
+
+
 # Run all stations that didn't connect to lake WQS polygon through streams snapping tool
-riverineStationsWQS <- filter(conventionals_D_Region_AU, !(FDT_STA_ID %in% reservoirStationsWQS$FDT_STA_ID) |
+riverineStationsWQS <- filter(cit, !(FDT_STA_ID %in% reservoirStationsWQS$FDT_STA_ID) |
                                 FDT_STA_ID %in% notInReservoirWQS)
                               
 # Make sure we didn't lose anyone
-nrow(riverineStationsWQS) + nrow(reservoirStationsWQS) == nrow(conventionals_D_Region_AU) 
+nrow(riverineStationsWQS) + nrow(reservoirStationsWQS) == nrow(cit) 
 
 rm(reservoirWQS);rm(reservoirAUs); rm(reservoirStations) # clean up workspace
 ```
@@ -377,8 +502,8 @@ regionalOutput <- list()
 # Loop through multiple basins
 for (i in 1:length(unique(riverineStationsWQS$Basin))){
   Regional_Sites_AU_basin <- filter(riverineStationsWQS, Basin %in% unique(riverineStationsWQS$Basin)[i] )
-  WQSsnaps <- snapAndOrganizeWQS(Regional_Sites_AU_basin, 'GIS/updatedWQS/', 
-                                 basinNameSwitcher(unique(riverineStationsWQS$Basin)[i]),  seq(10,80,by=10))
+  WQSsnaps <- snapAndOrganizeWQS_citmon(Regional_Sites_AU_basin, 'GIS/updatedWQS/', 
+                                 basinNameSwitcher(unique(Regional_Sites_AU_basin$Basin)),  seq(10,80,by=10))
   regionalOutput[[i]] <- WQSsnaps
 }
 ```
@@ -386,6 +511,9 @@ for (i in 1:length(unique(riverineStationsWQS$Basin))){
 Now the list gets smashed together into a single dataframe (tibble).
 
 ```{r smash}
+
+regionalOutput[[1]] <- mutate(regionalOutput[[1]], FDT_STA_ID = FDT_STA_ID.x) %>% select( -c( FDT_STA_ID.x,FDT_STA_ID.y)) %>% select(rowname, FDT_STA_ID, everything())
+
 # smash it all back together, change from lists to single dataframe
 RegionalResults <- do.call("rbind", lapply(regionalOutput, data.frame))
 #View(RegionalResults)

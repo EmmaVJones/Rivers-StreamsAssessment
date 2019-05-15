@@ -54,7 +54,7 @@ pHPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
     DT::datatable(parameterFilter, rownames = FALSE, 
                   options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
       formatStyle(c('FDT_FIELD_PH','FDT_FIELD_PH_RMK'), 'FDT_FIELD_PH_RMK', 
-                  backgroundColor = styleEqual(c(NA, 'Level III','Level II', 'Level I'), c('lightgray', 'lightgray', 'yellow','orange')))
+                  backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
   })
   
   output$pHplotly <- renderPlotly({

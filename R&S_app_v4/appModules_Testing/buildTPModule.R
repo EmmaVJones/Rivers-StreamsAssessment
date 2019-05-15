@@ -1,37 +1,22 @@
 source('testingDataset.R')
 
-AUData <- filter(conventionals_HUC, ID305B_1 %in% 'VAW-H01R_JMS04A00' | 
-                   ID305B_2 %in% 'VAW-H01R_JMS04A00' | 
-                   ID305B_2 %in% 'VAW-H01R_JMS04A00')%>% 
-  left_join(WQSvalues, by = 'CLASS')
+#AUData <- filter(conventionals_HUC, ID305B_1 %in% 'VAW-H01R_JMS04A00' | 
+#                   ID305B_2 %in% 'VAW-H01R_JMS04A00' | 
+#                   ID305B_2 %in% 'VAW-H01R_JMS04A00')%>% 
+#  left_join(WQSvalues, by = 'CLASS')
 
-x <-filter(AUData, FDT_STA_ID %in% '2-JMS279.41') 
+x <-filter(conventionals_HUC, FDT_STA_ID %in% '4APKP-4-DRBA')# '4APKP-4-DRBA') '8-YRK022.70')#
+
 
 # No Assessment functions bc no std but still need to count samples taken
-
-countTP <- function(x){
-  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME,PHOSPHORUS)%>% # Just get relevant columns
-    filter(!is.na(PHOSPHORUS)) %>% #get rid of NA's
-    summarize(NUT_TP_VIO= NA, NUT_TP_SAMP= n(), NUT_TP_STAT= NA)
-}
-
-TPexceed <- function(x){
-  TP <- dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME,PHOSPHORUS) %>%
-    filter(!is.na(PHOSPHORUS)) %>% #get rid of NA's
-    mutate(limit = 0.2) %>%
-    rename(parameter = !!names(.[3])) %>% # rename columns to make functions easier to apply
-    mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
-  return(quickStats(TP, 'NUT_TP')) 
-}
-
-
 
 TPPlotlySingleStationUI <- function(id){
   ns <- NS(id)
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('TP_oneStationSelectionUI')),
+      fluidRow(column(6, uiOutput(ns('TP_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('TPplotly')),
       h5('Total Phosphorus exceedances of 0.2 mg/L for the ',span(strong('selected site')),' are highlighted below.'),
       fluidRow(
@@ -53,7 +38,31 @@ TPPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
   
   TP_oneStation <- reactive({
     req(ns(input$TP_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$TP_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$TP_oneStationSelection) %>%
+      filter(!is.na(PHOSPHORUS))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(TP_oneStation())
+    parameterFilter <- dplyr::select(TP_oneStation(), FDT_STA_ID:FDT_COMMENT, PHOSPHORUS, RMK_PHOSPHORUS)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('PHOSPHORUS','RMK_PHOSPHORUS'), 'RMK_PHOSPHORUS', 
+                  backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
   
   output$TPplotly <- renderPlotly({
     req(input$TP_oneStationSelection, TP_oneStation())
@@ -86,12 +95,12 @@ TPPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
              xaxis=list(title="Sample Date",tickfont = list(size = 10)))
   })
   
-  
   output$stationTPExceedance <- renderTable({
     req(input$TP_oneStationSelection, TP_oneStation())
     dplyr::select(TP_oneStation(), FDT_STA_ID, FDT_DATE_TIME, FDT_DEPTH, PHOSPHORUS) %>%
       filter(PHOSPHORUS > 0.2)
   })
+  
   
   output$stationTPExceedanceRate <- renderTable({
     req(input$TP_oneStationSelection, TP_oneStation())
@@ -100,26 +109,25 @@ TPPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
 }
 
 
-
-
 ui <- fluidPage(
-  helpText('Review each site using the single site visualization section. There are no WQS for Specific Conductivity.'),
-  TPPlotlySingleStationUI('TP')
-)
+  helpText('Review each site using the single site visualization section, then 
+           proceed to the bottom of the page to find exceedance rate for the entire assessment unit.',br(),
+           span(strong('NOTE: The pH exceedance analysis results at the bottom of the page include data
+                       from ALL stations within the assessment unit.'))),
+  TPPlotlySingleStationUI('TP')     )
 
 server <- function(input,output,session){
+  
   stationData <- eventReactive( input$stationSelection, {
     filter(AUData, FDT_STA_ID %in% input$stationSelection) })
   stationSelected <- reactive({input$stationSelection})
   
-  AUData <- reactive({filter(conventionals_HUC, ID305B_1 %in% 'VAW-H01R_JMS04A00' | 
-                               ID305B_2 %in% 'VAW-H01R_JMS04A00' | 
-                               ID305B_2 %in% 'VAW-H01R_JMS04A00')%>% 
-      left_join(WQSvalues, by = 'CLASS')})
   
+  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% c('2-JKS018.68','4APKP-4-DRBA' ))})
   callModule(TPPlotlySingleStation,'TP', AUData, stationSelected)
   
 }
 
 shinyApp(ui,server)
+
 

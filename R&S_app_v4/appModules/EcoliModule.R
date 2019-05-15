@@ -1,9 +1,11 @@
+
 EcoliPlotlySingleStationUI <- function(id){
   ns <- NS(id)
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('Ecoli_oneStationSelectionUI')),
+      fluidRow(column(6, uiOutput(ns('Ecoli_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('Ecoliplotly')),
       br(),hr(),br(),
       fluidRow(
@@ -41,7 +43,7 @@ EcoliPlotlySingleStationUI <- function(id){
       br(), br(),
       h5(strong('Analyzed Data (Each window with an individual assessment decision)')),
       DT::dataTableOutput(ns('analysisTable')))
-      )
+  )
 }
 
 
@@ -56,7 +58,30 @@ EcoliPlotlySingleStation <- function(input,output,session, AUdata, stationSelect
   
   Ecoli_oneStation <- reactive({
     req(ns(input$Ecoli_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$Ecoli_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$Ecoli_oneStationSelection) %>%
+      filter(!is.na(E.COLI))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(Ecoli_oneStation())
+    parameterFilter <- dplyr::select(Ecoli_oneStation(), FDT_STA_ID:FDT_COMMENT, E.COLI, ECOLI_RMK)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('E.COLI','ECOLI_RMK'), 'ECOLI_RMK', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
   
   output$Ecoliplotly <- renderPlotly({
     req(input$Ecoli_oneStationSelection, Ecoli_oneStation())
@@ -107,13 +132,25 @@ EcoliPlotlySingleStation <- function(input,output,session, AUdata, stationSelect
   
   output$EcoliOldStdTableSingleSite <- DT::renderDataTable({
     req(Ecoli_oneStation())
-    z <- bacteria_Assessment_OLD(Ecoli_oneStation(), 'E.COLI', 126, 235) %>% dplyr::select(`Assessment Method`,everything())
-    DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t'))})
+    
+    #get rid of citizen data
+    #z1 <- citmonOutOfBacteria(Ecoli_oneStation(), E.COLI, ECOLI_RMK)
+    #if(nrow(z1)>0){
+    z1 <- filter(Ecoli_oneStation(), !(ECOLI_RMK %in% c('Level II', 'Level I')))
+    if(nrow(z1) > 1){
+      z <- bacteria_Assessment_OLD(z1,  'E.COLI', 126, 235) #bacteria_Assessment_OLD(Ecoli_oneStation(), 'E.COLI', 'ECOLI_RMK', 126, 235) 
+      if(nrow(z) > 0 ){
+        z <- dplyr::select(z, `Assessment Method`,everything()) }
+      DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t'))
+    }
+    
+    #} else { return(NULL)}
+  })
   
   ### New standard ----------------------------------------------------------------------------------
   newSTDbacteriaData <- reactive({
     req(Ecoli_oneStation())
-    conventionalsToBacteria(Ecoli_oneStation(), 'E.COLI')})  
+    conventionalsToBacteria(Ecoli_oneStation(), 'E.COLI')})#, 'ECOLI_RMK')})  
   
   output$EcoliexceedancesNEWStdTableSingleSite <- DT::renderDataTable({
     req(Ecoli_oneStation(),newSTDbacteriaData())
@@ -187,5 +224,4 @@ EcoliPlotlySingleStation <- function(input,output,session, AUdata, stationSelect
     DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "400px", dom='t'))
   })
   
-  }
-
+}
