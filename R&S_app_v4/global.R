@@ -337,24 +337,31 @@ citmonOutOfBacteria <- function(x, bacteriaType, bacteriaTypeRMK){
   bacteriaType1 <- enquo(bacteriaType)
   bacteriaTypeRMK1 <- enquo(bacteriaTypeRMK)
   
-  z <- #dplyr:: select(x, FDT_DATE_TIME2, !!bacteriaType1, !!bacteriaTypeRMK1) %>% # Just get relavent columns,
+  #dplyr:: select(x, FDT_DATE_TIME2, !!bacteriaType1, !!bacteriaTypeRMK1) %>% # Just get relavent columns,
     filter(x, !( !!bacteriaTypeRMK1  %in% c('Level II', 'Level I')) )
   
-  if(nrow(z) == 0){
-    z <- x[0,]
-    return(z)
-  
-    }else{ return(z)}
 }  
 
-#citmonOutOfBacteria(x, E.COLI, ECOLI_RMK)
+#citmonOutOfBacteria(x, ENTEROCOCCI, RMK_31649) ### Note the non quoted variables, makes a big difference 
 
 
 
+#conventionalsToBacteria <- function(x, bacteriaType){#}, bacteriaTypeRMK){
+#  bacteriaType1 <- enquo(bacteriaType)
+#  bacteriaTypeRMK1 <- enquo(bacteriaTypeRMK)
+  
+#  z <- dplyr::select(x, FDT_STA_ID, FDT_DATE_TIME2, !!bacteriaType1, !!bacteriaTypeRMK1) %>%
+#    #filter(!! bacteriaTypeRMK1 != 'Level I') %>% #c('Level II', 'Level I'))) %>% # get lower levels out
+#    filter(!! bacteriaTypeRMK1 != 'Level II')
+#    rename(ID = FDT_STA_ID, `Date Time` = FDT_DATE_TIME2, Value = bacteriaType) %>%
+#    filter(!is.na(Value))
+#  z$`Date Time` <- as.Date(z$`Date Time`)
+#  z$Value <- as.numeric(z$Value)
+#  return(z)
+#}
 
-conventionalsToBacteria <- function(x, bacteriaType){#}, bacteriaTypeRMK){
+conventionalsToBacteria <- function(x, bacteriaType){
   z <- dplyr::select(x, FDT_STA_ID, FDT_DATE_TIME2, bacteriaType, bacteriaTypeRMK) %>%
-    filter(!(!! bacteriaTypeRMK %in% c('Level II', 'Level I'))) %>% # get lower levels out
     rename(ID = FDT_STA_ID, `Date Time` = FDT_DATE_TIME2, Value = bacteriaType) %>%
     filter(!is.na(Value))
   z$`Date Time` <- as.Date(z$`Date Time`)

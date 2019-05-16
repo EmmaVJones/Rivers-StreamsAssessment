@@ -1,96 +1,15 @@
 source('testingDataset.R')
-monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
 
-# Single station data ----------------------------------------------------------------------
-conventionals_HUC<- filter(conventionals, Huc6_Vahu6 %in% 'JU44') %>%
-  left_join(dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, SPSTDS, ID305B_1, ID305B_2, ID305B_3), by='FDT_STA_ID')
+#AUData <- filter(conventionals_HUC, ID305B_1 %in% 'VAW-H01R_JMS04A00' | 
+#                   ID305B_2 %in% 'VAW-H01R_JMS04A00' | 
+#                   ID305B_2 %in% 'VAW-H01R_JMS04A00')%>% 
+#  left_join(WQSvalues, by = 'CLASS')
 
-
-AUData <- filter(conventionals_HUC, ID305B_1 %in% 'VAW-I21R_DCK01A06' | 
-                   ID305B_2 %in% 'VAW-I21R_DCK01A06' | 
-                   ID305B_2 %in% 'VAW-I21R_DCK01A06')%>% 
-  left_join(WQSvalues, by = 'CLASS')
-
-x <-filter(AUData, FDT_STA_ID %in% '2-DCK003.94')#'2-JMS282.28') 
-#bacteria_Assessment_OLD(filter(conventionals, FDT_STA_ID %in% '2-DCK003.94'), 'ENTEROCOCCI', 35, 104)
-
-#------------------------------------------------------------------------------------------
-#parameterDataset <- bacteriaGeomean
-#parameter <- 'ECOLI'
-
-quickStats <- function(parameterDataset, parameter){
-  results <- data.frame(SAMP = nrow(parameterDataset),
-                        VIO = nrow(filter(parameterDataset, exceeds == TRUE))) %>%
-    mutate(exceedanceRate = (VIO/SAMP)*100)
-  
-  if(results$exceedanceRate > 10.5 & results$SAMP > 10){outcome <- 'Review'}
-  if(results$exceedanceRate < 10.5 & results$SAMP > 10){outcome <- 'S'}
-  if(results$VIO >= 2 & results$SAMP < 10){outcome <- 'Review'}
-  if(results$VIO < 2 & results$SAMP < 10){outcome <- 'Review'}
-  
-  results <- mutate(results, STAT = outcome)
-  names(results) <- c(paste(parameter,names(results)[1], sep = '_'),
-                      paste(parameter,names(results)[2], sep = '_'),
-                      paste(parameter,names(results)[3], sep = '_'),
-                      paste(parameter,names(results)[4], sep = '_'))
-  #rename based on parameter entered
-  return(results)
-}
+x <-filter(conventionals_HUC, FDT_STA_ID %in% '4APKP-4-DRBA')# '4APKP-4-DRBA') '8-YRK022.70')#
 
 
-bacteria_ExceedancesGeomeanOLD <- function(x, bacteriaType, geomeanLimit){
-  suppressWarnings(mutate(x, SampleDate = format(FDT_DATE_TIME2,"%m/%d/%y"), # Separate sampling events by day
-                          previousSample=lag(SampleDate,1),previousSampleBacteria=lag(get(bacteriaType),1)) %>% # Line up previous sample with current sample line
-                     rowwise() %>% 
-                     mutate(sameSampleMonth= as.numeric(strsplit(SampleDate,'/')[[1]][1])  -  as.numeric(strsplit(previousSample,'/')[[1]][1])) %>% # See if sample months are the same, e.g. more than one sample per calendar month
-                     filter(sameSampleMonth == 0 | is.na(sameSampleMonth)) %>% # keep only rows with multiple samples per calendar month  or no previous sample (NA) to then test for geomean
-                     # USING CALENDAR MONTH BC THAT'S HOW WRITTEN IN GUIDANCE, rolling 4 wk windows would have been more appropriate
-                     mutate(sampleMonthYear = paste(month(as.Date(SampleDate,"%m/%d/%y")),year(as.Date(SampleDate,"%m/%d/%y")),sep='/')) %>% # grab sample month and year to group_by() for next analysis
-                     group_by(sampleMonthYear) %>%
-                     mutate(geoMeanCalendarMonth = FSA::geomean(as.numeric(get(bacteriaType))), # Calculate geomean
-                            limit = geomeanLimit, samplesPerMonth = n()))
-}
+x <- mutate(x, ENTEROCOCCI = `E._COLI_31648_NO/100mL`, ECOLI_RMK = RMK_31648)
 
-bacteria_ExceedancesSTV_OLD <- function(x, STVlimit){                                    
-  x %>% rename(parameter = !!names(.[2])) %>% # rename columns to make functions easier to apply
-    mutate(limit = STVlimit, exceeds = ifelse(parameter > limit, T, F)) # Single Sample Maximum 
-}
-
-bacteria_Assessment_OLD <- function(x, bacteriaType, geomeanLimit, STVlimit){
-  bacteria <- dplyr::select(x,FDT_DATE_TIME2,bacteriaType)%>% # Just get relavent columns, 
-    filter(!is.na(get(bacteriaType))) #get rid of NA's
-  # Geomean Analysis (if enough n)
-  bacteriaGeomean <- bacteria_ExceedancesGeomeanOLD(bacteria, bacteriaType, geomeanLimit) %>%     
-    distinct(sampleMonthYear, .keep_all = T) %>%
-    filter(samplesPerMonth > 4, geoMeanCalendarMonth > limit) %>% # minimum sampling rule for geomean to apply
-    mutate(exceeds = TRUE) %>%
-    select(sampleMonthYear, geoMeanCalendarMonth, limit, exceeds, samplesPerMonth)
-  geomeanResults <- quickStats(bacteriaGeomean, bacteriaType) %>%
-    mutate(`Assessment Method` = 'Old Monthly Geomean')
-  geomeanResults[,4] <- recode(geomeanResults[,4], 'Review' = paste('Review if ', bacteriaType,'_VIO > 1',sep=''))
-  
-  # Single Sample Maximum Analysis
-  bacteriaSSM <- bacteria_ExceedancesSTV_OLD(bacteria, STVlimit) 
-  SSMresults <- quickStats(bacteriaSSM, bacteriaType) %>% mutate(`Assessment Method` = 'Old Single Sample Maximum')
-  return( rbind(geomeanResults, SSMresults) )
-}
-
-
-
-# New bacteria standard
-source('newBacteriaStandard_working.R')
-
-
-# Function to convert conventionals bacteria (e coli and enter) to format needed for function
-#bacteriaType <- 'ENTEROCOCCI'#ENTEROCOCCI
-conventionalsToBacteria <- function(x, bacteriaType){
-  z <- dplyr::select(x, FDT_STA_ID, FDT_DATE_TIME2, bacteriaType) %>%
-    rename(ID = FDT_STA_ID, `Date Time` = FDT_DATE_TIME2, Value = bacteriaType) %>%
-    filter(!is.na(Value))
-  z$`Date Time` <- as.Date(z$`Date Time`)
-  z$Value <- as.numeric(z$Value)
-  return(z)
-}
 
 
 
@@ -99,7 +18,8 @@ EnteroPlotlySingleStationUI <- function(id){
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('Entero_oneStationSelectionUI')),
+      fluidRow(column(6, uiOutput(ns('Entero_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('Enteroplotly')),
       br(),hr(),br(),
       fluidRow(
@@ -118,7 +38,7 @@ EnteroPlotlySingleStationUI <- function(id){
                DT::dataTableOutput(ns('EnteroexceedancesNEWStdTableSingleSite'))),
         column(6, h5('Individual enterococci exceedance statistics for the ',span(strong('selected site')),' are highlighted below.'),
                h4(strong('Old Standard (Single Sample Maximum = 104 CFU / 100 mL, geomean = 35 CFU / 100 mL)')), 
-               DT::dataTableOutput(ns("EnteroOldStdTableSingleSite")), br(), br(), br(),   br(),br(),br(), br(), br(),br(), br(), br(), br(), br(), br(), br(), br(), br(), br(), hr(), br(), br(),
+               DT::dataTableOutput(ns("EnteroOldStdTableSingleSite")), br(), br(), br(),   br(),br(),br(), br(),  br(), br(), br(), br(), br(), br(), br(), br(), br(), hr(), br(), br(),
                h4(strong('New Standard (STV= 130 CFU / 100 mL, geomean = 35 CFU / 100 mL with additional sampling requirements)')), 
                DT::dataTableOutput(ns("EnteroNEWStdTableSingleSite")),
                h4(strong('See below section for detailed analysis with new recreation standard.')))),
@@ -155,7 +75,31 @@ EnteroPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
   
   Entero_oneStation <- reactive({
     req(ns(input$Entero_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$Entero_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$Entero_oneStationSelection)  %>%
+      filter(!is.na(ENTEROCOCCI))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(Entero_oneStation())
+    parameterFilter <- dplyr::select(Entero_oneStation(), FDT_STA_ID:FDT_COMMENT, ENTEROCOCCI, RMK_31649)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('ENTEROCOCCI','RMK_31649'), 'RMK_31649', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
+
   
   output$Enteroplotly <- renderPlotly({
     req(input$Entero_oneStationSelection, Entero_oneStation())
@@ -194,7 +138,6 @@ EnteroPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
   
   output$EnteroexceedancesOldStdTableSingleSiteSTV <- DT::renderDataTable({
     req(Entero_oneStation())
-    print(Entero_oneStation())
     z <- bacteria_ExceedancesSTV_OLD(Entero_oneStation() %>%
                                        dplyr::select(FDT_DATE_TIME2,ENTEROCOCCI)%>% # Just get relavent columns, 
                                        filter(!is.na(ENTEROCOCCI)) #get rid of NA's
@@ -207,13 +150,25 @@ EnteroPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
   
   output$EnteroOldStdTableSingleSite <- DT::renderDataTable({
     req(Entero_oneStation())
-    z <- bacteria_Assessment_OLD(Entero_oneStation(), 'ENTEROCOCCI', 35, 104) %>% dplyr::select(`Assessment Method`,everything())
-    DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t'))  })
+    z1 <- filter(Entero_oneStation(), !(RMK_31649 %in% c('Level II', 'Level I')))
+    if(nrow(z1) > 1){
+      z <- bacteria_Assessment_OLD(z1,  'ENTEROCOCCI', 35, 104) #bacteria_Assessment_OLD(Entero_oneStation(), 'ENTEROCOCCI', 'RMK_31649', 126, 235) 
+      if(nrow(z) > 0 ){
+        z <- dplyr::select(z, `Assessment Method`,everything()) }
+      DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t'))
+    } })
+    
+    #z <- bacteria_Assessment_OLD(Entero_oneStation(), 'ENTEROCOCCI', 35, 104) %>% dplyr::select(`Assessment Method`,everything())
+    #DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t'))  })
   
   ### New standard ----------------------------------------------------------------------------------
   newSTDbacteriaData <- reactive({
     req(Entero_oneStation())
-    conventionalsToBacteria(Entero_oneStation(), 'ENTEROCOCCI')})  
+    z <- citmonOutOfBacteria(Entero_oneStation(), ENTEROCOCCI, RMK_31649)
+    if(nrow(z) > 1){
+      conventionalsToBacteria(z, 'ENTEROCOCCI')
+    }   }) 
+    #conventionalsToBacteria(Entero_oneStation(), 'ENTEROCOCCI')})  
   
   output$EnteroexceedancesNEWStdTableSingleSite <- DT::renderDataTable({
     req(Entero_oneStation(),newSTDbacteriaData())
@@ -291,25 +246,25 @@ EnteroPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
 }
 
 
-
-
 ui <- fluidPage(
-  selectInput('stationSelection', 'Station Selection', choices = unique(AUData$FDT_STA_ID)),
-  helpText('Review each site using the single site visualization section. There are no WQS for Total Nitrogen.'),
-  EnteroPlotlySingleStationUI('Entero')
-)
+  helpText('Review each site using the single site visualization section, then 
+           proceed to the bottom of the page to find exceedance rate for the entire assessment unit.',br(),
+           span(strong('NOTE: The pH exceedance analysis results at the bottom of the page include data
+                       from ALL stations within the assessment unit.'))),
+  EnteroPlotlySingleStationUI('Entero')    )
 
 server <- function(input,output,session){
+  
   stationData <- eventReactive( input$stationSelection, {
     filter(AUData, FDT_STA_ID %in% input$stationSelection) })
   stationSelected <- reactive({input$stationSelection})
   
-  AUData <- reactive({filter(conventionals_HUC, ID305B_1 %in% 'VAW-I21R_DCK01A06' | 
-                               ID305B_2 %in% 'VAW-I21R_DCK01A06' | 
-                               ID305B_2 %in% 'VAW-I21R_DCK01A06')%>% 
-      left_join(WQSvalues, by = 'CLASS')})
+  
+  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% c('2-JKS018.68','4APKP-4-DRBA' )) %>%
+      mutate( ENTEROCOCCI = `E._COLI_31648_NO/100mL`, RMK_31649 = RMK_31648) })
   
   callModule(EnteroPlotlySingleStation,'Entero', AUData, stationSelected)#input$stationSelection)
+  
   
 }
 

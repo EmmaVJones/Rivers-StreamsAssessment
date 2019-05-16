@@ -1,11 +1,10 @@
-
-
 EnteroPlotlySingleStationUI <- function(id){
   ns <- NS(id)
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('Entero_oneStationSelectionUI')),
+      fluidRow(column(6, uiOutput(ns('Entero_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('Enteroplotly')),
       br(),hr(),br(),
       fluidRow(
@@ -43,7 +42,7 @@ EnteroPlotlySingleStationUI <- function(id){
       DT::dataTableOutput(ns('analysisTable')))
     
     
-      )
+  )
 }
 
 
@@ -61,7 +60,31 @@ EnteroPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
   
   Entero_oneStation <- reactive({
     req(ns(input$Entero_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$Entero_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$Entero_oneStationSelection)  %>%
+      filter(!is.na(ENTEROCOCCI))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(Entero_oneStation())
+    parameterFilter <- dplyr::select(Entero_oneStation(), FDT_STA_ID:FDT_COMMENT, ENTEROCOCCI, RMK_31649)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('ENTEROCOCCI','RMK_31649'), 'RMK_31649', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
+  
   
   output$Enteroplotly <- renderPlotly({
     req(input$Entero_oneStationSelection, Entero_oneStation())
@@ -112,13 +135,25 @@ EnteroPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
   
   output$EnteroOldStdTableSingleSite <- DT::renderDataTable({
     req(Entero_oneStation())
-    z <- bacteria_Assessment_OLD(Entero_oneStation(), 'ENTEROCOCCI', 35, 104) %>% dplyr::select(`Assessment Method`,everything())
-    DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t'))  })
+    z1 <- filter(Entero_oneStation(), !(RMK_31649 %in% c('Level II', 'Level I')))
+    if(nrow(z1) > 1){
+      z <- bacteria_Assessment_OLD(z1,  'ENTEROCOCCI', 35, 104) #bacteria_Assessment_OLD(Entero_oneStation(), 'ENTEROCOCCI', 'RMK_31649', 126, 235) 
+      if(nrow(z) > 0 ){
+        z <- dplyr::select(z, `Assessment Method`,everything()) }
+      DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t'))
+    } })
+  
+  #z <- bacteria_Assessment_OLD(Entero_oneStation(), 'ENTEROCOCCI', 35, 104) %>% dplyr::select(`Assessment Method`,everything())
+  #DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "250px", dom='t'))  })
   
   ### New standard ----------------------------------------------------------------------------------
   newSTDbacteriaData <- reactive({
     req(Entero_oneStation())
-    conventionalsToBacteria(Entero_oneStation(), 'ENTEROCOCCI')})  
+    z <- citmonOutOfBacteria(Entero_oneStation(), ENTEROCOCCI, RMK_31649)
+    if(nrow(z) > 1){
+      conventionalsToBacteria(z, 'ENTEROCOCCI')
+    }   }) 
+  #conventionalsToBacteria(Entero_oneStation(), 'ENTEROCOCCI')})  
   
   output$EnteroexceedancesNEWStdTableSingleSite <- DT::renderDataTable({
     req(Entero_oneStation(),newSTDbacteriaData())
@@ -193,4 +228,4 @@ EnteroPlotlySingleStation <- function(input,output,session, AUdata, stationSelec
     DT::datatable(z, rownames = FALSE, options= list(scrollX = TRUE, pageLength = nrow(z), scrollY = "400px", dom='t'))
   })
   
-  }
+}

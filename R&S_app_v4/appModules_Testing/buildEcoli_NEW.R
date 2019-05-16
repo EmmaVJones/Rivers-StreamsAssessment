@@ -162,7 +162,11 @@ EcoliPlotlySingleStation <- function(input,output,session, AUdata, stationSelect
   ### New standard ----------------------------------------------------------------------------------
   newSTDbacteriaData <- reactive({
     req(Ecoli_oneStation())
-    conventionalsToBacteria(Ecoli_oneStation(), 'E.COLI')})#, 'ECOLI_RMK')})  
+    z <- citmonOutOfBacteria(Ecoli_oneStation(), E.COLI, ECOLI_RMK)
+    if(nrow(z) > 1){
+      conventionalsToBacteria(z, 'E.COLI')
+    }   }) 
+    #conventionalsToBacteria(Ecoli_oneStation(), 'E.COLI')})#, 'ECOLI_RMK')})  
   
   output$EcoliexceedancesNEWStdTableSingleSite <- DT::renderDataTable({
     req(Ecoli_oneStation(),newSTDbacteriaData())
