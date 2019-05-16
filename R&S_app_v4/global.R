@@ -583,6 +583,10 @@ benthicResultMetrics <- function(x, VSCI, VCPMI){
 }
 
 benthicAssessment <- function(x,conventionals_sf,VSCI,VCPMI){
+  # If citmon/nonagency return a message that assessor needs to look at it themselves
+  if(unique(x$STA_LV3_CODE) %in% c("CMON", "NONA", "NONA ")){
+    return(data.frame(BENTHIC_STAT='Review, only EDAS data handled by assessment app'))  }
+  
   x <- filter(conventionals_sf, FDT_STA_ID %in% x$FDT_STA_ID)#'2-JKS033.06') #'2-JMS279.41')##
   if(nrow(x) >0){
     x2 <- benthicResultMetrics(x,VSCI,VCPMI)$data
@@ -751,6 +755,48 @@ bacteriaExceedances_NEW <- function(stationData,bacteriaType, sampleRequirement,
 
 
 
+#### Station Table stuff for citmon
+
+countSamplesAtLevels <- function(x){
+  parameterName <- unique(names(x)[1])
+  x1 <- x %>% rename(measure = !!names(.[1])) %>% filter(!is.na(measure)) %>% group_by_at(2) %>% summarize(count = n()) %>% rename(parameter = !!names(.[1])) %>% mutate(together = paste(parameter,':',count))
+  if( nrow(x1) > 0){ 
+    return(paste(parameterName," (", paste0(x1$together, collapse='; '), ")"))
+  } else{ return(NA)}
+}
+
+#testpH <- data.frame(FDT_FIELD_PH= c(7,3,4,5,5,3,2,3,4,5),
+#                     FDT_FIELD_PH_RMK = c('Level I', "Level III", "Level II","Level II","Level II","Level II","Level III","Level III", "Level I", "Level I"))
+#testDO <- data.frame(DO= c(7,3,4,5,5,3,2,3,NA,5),
+#                     DO_RMK = c('Level I', "Level III", "Level II","Level II","Level II","Level II","Level III","Level III", "Level I", "Level I"))
+#countSamplesAtLevels(testpH)
+#countSamplesAtLevels(testDO)
+#countSamplesAtLevels(x[,c(16:17)])
+
+
+
+collapseAllDataByLevel <- function(x, colNumbers){
+  # Only do this if citmon or NonAgency data
+  if(unique(x$STA_LV3_CODE) %in% c("CMON", "NONA", "NONA ")){
+    #skip every other column (remarks)
+    a <- colNumbers#12:117#(ncol(stationData)-2)
+    n <- length(a)
+    
+    holder <- NA
+    
+    for(i in a[seq(1,n,2)]){ 
+      x <- x[,c(i, i+1)]
+      holder[i] <- countSamplesAtLevels(x)
+    }
+    
+    return(paste0(holder[!is.na(holder)], collapse = '; ')) 
+  } 
+}
+
+#collapseAllDataByLevel(stationData, 12:117)
+
+
+
 
 
 
@@ -765,7 +811,7 @@ bacteriaExceedances_NEW <- function(stationData,bacteriaType, sampleRequirement,
 
 # for level II data
 citmonParameterCount <- function(x, parameter, parameterRemark){
-  if(unique(x$STA_LV3_CODE) == 'CMON'){
+  if(unique(x$STA_LV3_CODE) %in% c("CMON", "NONA", "NONA ")){
     z <- filter(x, !!as.name(parameterRemark) == 'Level II') %>% # money filter method by variable name
       filter(!is.na(!!as.name(parameter)))
     if(nrow(z) > 0){

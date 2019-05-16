@@ -202,44 +202,46 @@ for(i in 1:nrow(stationTable)){
 
   
   results <- cbind(StationTableStartingData(stationData),
-                   tempExceedances(stationData),
-                   DOExceedances_Min(stationData),
-                   pHExceedances(stationData),
-                   bacteriaExceedances_OLD(bacteria_Assessment_OLD(citmonOutOfBacteria(stationData, E.COLI, ECOLI_RMK), 'E.COLI', 126, 235),'E.COLI') %>%
-                     dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
-                  # No citmon way
-                  #bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'E.COLI', 126, 235),'E.COLI') %>% 
-                  #   dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
-                   # new bacteria exceedance stats
-                  bacteriaExceedances_NEW(stationData,'E.COLI', 10, 410, 126),
-                  bacteriaExceedances_OLD(bacteria_Assessment_OLD(citmonOutOfBacteria(stationData, ENTEROCOCCI, RMK_31649), 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>%
-                     dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
-                  # No citmon way  
-                  #bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
-                  #   dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
-                   #new bacteria exceedance stats
-                   bacteriaExceedances_NEW(stationData,'ENTEROCOCCI',10, 35, 104),
-                   metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
-                                                 dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'),
-                   acuteNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
-                     dplyr::select(AcuteAmmonia_VIO, AcuteAmmonia_STAT) %>%
-                     dplyr::rename('WAT_TOX_VIO' ='AcuteAmmonia_VIO','WAT_TOX_STAT' = 'AcuteAmmonia_STAT'),
-                   metalsExceedances(filter(Smetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
-                                       dplyr::select(ARSENIC:ZINC), 'SED_MET') %>%
-                     dplyr::select(-ends_with('exceedanceRate')),
-                   data.frame(SED_TOX_VIO='Not Analyzed by App', SED_TOX_STAT='Not Analyzed by App'),# Placeholder for sediment toxics
-                   data.frame(FISH_MET_VIO='Not Analyzed by App', FISH_MET_STAT='Not Analyzed by App'), # Placeholder for fish metals
-                   data.frame(FISH_TOX_VIO='Not Analyzed by App', FISH_TOX_STAT='Not Analyzed by App'),# Placeholder for fish toxics
-                   benthicAssessment(stationData,conventionals_sf,VSCI,VCPMI),
-                   countTP(citmonOutOfBacteria(stationData, PHOSPHORUS, RMK_PHOSPHORUS)),
-                   countchla(citmonOutOfBacteria(stationData, CHLOROPHYLL, RMK_32211)),
-                  # No citmon method
-                  #countTP(stationData),
-                  # countchla(stationData),
-                   # Chronic Ammonia printed in Comments
-                   data.frame(COMMENTS= paste('WAT_TOX fields indicate acute ammonia calculations. Chronic Ammonia Violations: ',chronicAmmonia[1,],
-                                              citmonComment(stationData)))) %>%
-    dplyr::select(-ends_with('exceedanceRate'))
+                 tempExceedances(stationData),
+                 DOExceedances_Min(stationData),
+                 pHExceedances(stationData),
+                 bacteriaExceedances_OLD(bacteria_Assessment_OLD(citmonOutOfBacteria(stationData, E.COLI, ECOLI_RMK), 'E.COLI', 126, 235),'E.COLI') %>%
+                   dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
+                 # No citmon way
+                 #bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'E.COLI', 126, 235),'E.COLI') %>% 
+                 #   dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
+                 # new bacteria exceedance stats
+                 bacteriaExceedances_NEW(citmonOutOfBacteria(stationData, E.COLI, ECOLI_RMK),'E.COLI', 10, 410, 126), #bacteriaExceedances_NEW(stationData,'E.COLI', 10, 410, 126),
+                 bacteriaExceedances_OLD(bacteria_Assessment_OLD(citmonOutOfBacteria(stationData, ENTEROCOCCI, RMK_31649), 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>%
+                   dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
+                 # No citmon way  
+                 #bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
+                 #   dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
+                 #new bacteria exceedance stats
+                 bacteriaExceedances_NEW(citmonOutOfBacteria(stationData, ENTEROCOCCI, RMK_31649),'ENTEROCOCCI',10, 35, 104),#bacteriaExceedances_NEW(stationData,'ENTEROCOCCI',10, 35, 104),
+                 metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
+                                     dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'),
+                 acuteNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
+                   dplyr::select(AcuteAmmonia_VIO, AcuteAmmonia_STAT) %>%
+                   dplyr::rename('WAT_TOX_VIO' ='AcuteAmmonia_VIO','WAT_TOX_STAT' = 'AcuteAmmonia_STAT'),
+                 metalsExceedances(filter(Smetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
+                                     dplyr::select(ARSENIC:ZINC), 'SED_MET') %>%
+                   dplyr::select(-ends_with('exceedanceRate')),
+                 data.frame(SED_TOX_VIO='Not Analyzed by App', SED_TOX_STAT='Not Analyzed by App'),# Placeholder for sediment toxics
+                 data.frame(FISH_MET_VIO='Not Analyzed by App', FISH_MET_STAT='Not Analyzed by App'), # Placeholder for fish metals
+                 data.frame(FISH_TOX_VIO='Not Analyzed by App', FISH_TOX_STAT='Not Analyzed by App'),# Placeholder for fish toxics
+                 benthicAssessment(stationData,conventionals_sf,VSCI,VCPMI),
+                 countTP(citmonOutOfBacteria(stationData, PHOSPHORUS, RMK_PHOSPHORUS)),
+                 countchla(citmonOutOfBacteria(stationData, CHLOROPHYLL, RMK_32211)),
+                 # No citmon method
+                 #countTP(stationData),
+                 # countchla(stationData),
+                 # Chronic Ammonia printed in Comments
+                 data.frame(COMMENTS= paste('WAT_TOX fields indicate acute ammonia calculations. Chronic Ammonia Violations: ',chronicAmmonia[1,], ";",
+                                            collapseAllDataByLevel(stationData, 12:117)))) %>%
+                                            #citmonComment(stationData)))) %>%
+  dplyr::select(-ends_with('exceedanceRate'))
+
   
   # manipulate ID305B_1 to get DCR11 watershed ID
   results$WATERSHED_ID <- substr(strsplit(as.character(results$ID305B_1), '-')[[1]][2] , 1, 3)

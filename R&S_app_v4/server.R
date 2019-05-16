@@ -174,7 +174,7 @@ shinyServer(function(input, output, session) {
                               ID305B_2, ID305B_3,STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin
                               ), by='FDT_STA_ID') %>%
       filter(!is.na(ID305B_1))
-    print(z)
+    #print(z)
     return(z)})
   
   output$AUSelection_ <- renderUI({ req(conventionals_HUC())
@@ -241,18 +241,41 @@ shinyServer(function(input, output, session) {
   
   observe(siteData$StationTableResults1 <- cbind(tempExceedances(stationData()), 
                                                  DOExceedances_Min(stationData()), pHExceedances(stationData()),
-                                                 bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData(), 'E.COLI', 126, 235),'E.COLI') %>% 
+                                                 bacteriaExceedances_OLD(bacteria_Assessment_OLD(citmonOutOfBacteria(stationData(), E.COLI, ECOLI_RMK), 'E.COLI', 126, 235),'E.COLI') %>%
                                                    dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
+                                                 # No citmon way
+                                                 #bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData(), 'E.COLI', 126, 235),'E.COLI') %>% 
+                                                 #   dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
                                                  # new bacteria exceedance stats
-                                                 bacteriaExceedances_NEW(stationData(),'E.COLI', 10, 410, 126),
-                                                 bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData(), 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
+                                                 bacteriaExceedances_NEW(citmonOutOfBacteria(stationData(), E.COLI, ECOLI_RMK),'E.COLI', 10, 410, 126), #bacteriaExceedances_NEW(stationData(),'E.COLI', 10, 410, 126),
+                                                 bacteriaExceedances_OLD(bacteria_Assessment_OLD(citmonOutOfBacteria(stationData(), ENTEROCOCCI, RMK_31649), 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>%
                                                    dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
-                                                 # new bacteria exceedance stats
-                                                 bacteriaExceedances_NEW(stationData(),'ENTEROCOCCI',10, 35, 104),
+                                                 # No citmon way  
+                                                 #bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData(), 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
+                                                 #   dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
+                                                 #new bacteria exceedance stats
+                                                 bacteriaExceedances_NEW(citmonOutOfBacteria(stationData(), ENTEROCOCCI, RMK_31649),'ENTEROCOCCI',10, 35, 104),#bacteriaExceedances_NEW(stationData(),'ENTEROCOCCI',10, 35, 104),
                                                  metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData()$FDT_STA_ID) %>% 
                                                                      dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'))%>%
             dplyr::select(-ends_with('exceedanceRate')))
   
+  
+  ## Counting citmon data with citmonAllDataByLevel function was a pain in shiny environment, so just broke it out to components and worked
+  citmonAllDataByLevel <- reactive({
+    # Only do this if citmon or NonAgency data
+    if(unique(stationData()$STA_LV3_CODE) %in% c("CMON", "NONA", "NONA ")){
+      a <- 12:117
+      n <- length(a)
+      
+      holder <- NA
+      
+      for(i in a[seq(1,n,2)]){ 
+        x <- stationData()[,c(i, i+1)]
+        holder[i] <- countSamplesAtLevels(x)
+      }
+      return(paste0(holder[!is.na(holder)], collapse = '; '))
+    }
+  })
   
   output$stationTableDataSummary <- DT::renderDataTable({
     req(stationData())
@@ -277,7 +300,8 @@ shinyServer(function(input, output, session) {
                   benthicAssessment(stationData(),conventionals_sf,VSCI,VCPMI),
                   countTP(stationData()),
                   countchla(stationData()),
-                  data.frame(COMMENTS=  paste('WAT_TOX fields indicate acute ammonia calculations. Chronic Ammonia Violations: ',chronicAmmonia[1,]))) %>%
+                  data.frame(COMMENTS=  paste('WAT_TOX fields indicate acute ammonia calculations. Chronic Ammonia Violations: ',chronicAmmonia[1,],";",
+                                              citmonAllDataByLevel()))) %>%
       dplyr::select(-ends_with('exceedanceRate'))
     z2 <- cbind(z, siteData$StationTableResults1, AMM, more)
     
