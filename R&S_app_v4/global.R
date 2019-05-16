@@ -345,23 +345,8 @@ citmonOutOfBacteria <- function(x, bacteriaType, bacteriaTypeRMK){
 #citmonOutOfBacteria(x, ENTEROCOCCI, RMK_31649) ### Note the non quoted variables, makes a big difference 
 
 
-
-#conventionalsToBacteria <- function(x, bacteriaType){#}, bacteriaTypeRMK){
-#  bacteriaType1 <- enquo(bacteriaType)
-#  bacteriaTypeRMK1 <- enquo(bacteriaTypeRMK)
-  
-#  z <- dplyr::select(x, FDT_STA_ID, FDT_DATE_TIME2, !!bacteriaType1, !!bacteriaTypeRMK1) %>%
-#    #filter(!! bacteriaTypeRMK1 != 'Level I') %>% #c('Level II', 'Level I'))) %>% # get lower levels out
-#    filter(!! bacteriaTypeRMK1 != 'Level II')
-#    rename(ID = FDT_STA_ID, `Date Time` = FDT_DATE_TIME2, Value = bacteriaType) %>%
-#    filter(!is.na(Value))
-#  z$`Date Time` <- as.Date(z$`Date Time`)
-#  z$Value <- as.numeric(z$Value)
-#  return(z)
-#}
-
 conventionalsToBacteria <- function(x, bacteriaType){
-  z <- dplyr::select(x, FDT_STA_ID, FDT_DATE_TIME2, bacteriaType, bacteriaTypeRMK) %>%
+  z <- dplyr::select(x, FDT_STA_ID, FDT_DATE_TIME2, bacteriaType) %>% #, bacteriaTypeRMK) %>%
     rename(ID = FDT_STA_ID, `Date Time` = FDT_DATE_TIME2, Value = bacteriaType) %>%
     filter(!is.na(Value))
   z$`Date Time` <- as.Date(z$`Date Time`)
@@ -446,6 +431,10 @@ chronicNH3limit <- function(x){
 
 # Return one line summarizing samples and violation rate
 chronicNH3exceedance <- function(x){
+  
+  # Get rid of no ammonia samples (fixes when pH recorded but no AMMONIA)
+  x <- filter(x, !is.na(AMMONIA))
+  
   # no data sent to function
   if(nrow(x)==0){
     return(quickStats(dplyr::select(x, FDT_DATE_TIME2, FDT_DEPTH, FDT_TEMP_CELCIUS, FDT_FIELD_PH, AMMONIA) %>%
@@ -688,6 +677,9 @@ bacteriaExceedances_OLD <- function(results, bacteriaType){
     return(z)
   }
 }
+
+# for citmon
+#bacteriaExceedances_OLD(bacteria_Assessment_OLD(citmonOutOfBacteria(x, E.COLI, ECOLI_RMK), 'E.COLI', 126, 235),'E.COLI')
 
 #bacteriaExceedances_OLD(bacteria_Assessment_OLD(x, 'E.COLI', 126, 235),'E.COLI')
 #bacteriaExceedances_OLD( bacteria_Assessment_OLD(filter(conventionals, FDT_STA_ID %in% '2-DCK003.94'), 'ENTEROCOCCI', 35, 104))

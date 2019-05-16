@@ -1,31 +1,11 @@
 source('testingDataset.R')
-monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
 
+#AUData <- filter(conventionals_HUC, ID305B_1 %in% 'VAW-H01R_JMS04A00' | 
+#                   ID305B_2 %in% 'VAW-H01R_JMS04A00' | 
+#                   ID305B_2 %in% 'VAW-H01R_JMS04A00')%>% 
+#  left_join(WQSvalues, by = 'CLASS')
 
-conventionals_HUC<- filter(conventionals, Huc6_Vahu6 %in% 'JU52') %>%
-  left_join(dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, SPSTDS, ID305B_1, ID305B_2, ID305B_3), by='FDT_STA_ID')
-
-
-AUData <- filter(conventionals_HUC, ID305B_1 %in% 'VAW-I25R_HAM01A02' | 
-                   ID305B_1 %in% 'VAW-I25R_CAT04D12' | 
-                   ID305B_1 %in% 'VAW-I25R_CAT04C04')%>% 
-  left_join(WQSvalues, by = 'CLASS')
-
-x <-filter(AUData, FDT_STA_ID %in% '2-HAM000.37') 
-
-
-
-TSulfatePWS <- function(x){
-  if(grepl('PWS', unique(x$SPSTDS))){
-    tSulfate <- dplyr::select(x, FDT_DATE_TIME, FDT_DEPTH, SULFATE_TOTAL) %>%
-      filter(!is.na(SULFATE_TOTAL)) %>% #get rid of NA's
-      mutate(limit = 250) %>%
-      rename(parameter = !!names(.[3])) %>% # rename columns to make functions easier to apply
-      mutate(exceeds = ifelse(parameter > limit, T, F)) # Identify where above NH3 WQS limit
-    return(quickStats(chloride, 'PWS_Acute_Total_Sulfate'))  }  
-}
-TSulfatePWS(x)
-
+x <-filter(conventionals_HUC, FDT_STA_ID %in% '4APKP-4-DRBA')# '4APKP-4-DRBA') '8-YRK022.70')#
 
 
 
@@ -34,12 +14,13 @@ DSulfatePlotlySingleStationUI <- function(id){
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('DSulfate_oneStationSelectionUI')),
+      fluidRow(column(6,uiOutput(ns('DSulfate_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       selectInput(ns('sulfateType'),'Select Total or Dissolved Sulfate', choices = c('Total Sulfate', 'Dissolved Sulfate'),
                   width = '30%'),
       plotlyOutput(ns('DSulfateplotly')),
       conditionalPanel(paste0("input['",ns('sulfateType'),"'] == 'Total Sulfate'"),
-        #ns("input.sulfateType == 'Total Sulfate'"),
+                       #ns("input.sulfateType == 'Total Sulfate'"),
                        fluidRow(
                          column(8, h5('All total sulfate records that are above the PWS criteria (where applicable) for the ',span(strong('selected site')),' are highlighted below.'),
                                 div(style = 'height:150px;overflow-y: scroll', tableOutput(ns('TSulfateRangeTableSingleSite')))),
@@ -47,7 +28,7 @@ DSulfatePlotlySingleStationUI <- function(id){
                                       If no data is presented, then the PWS criteria is not applicable to the station.'),
                                 tableOutput(ns("stationTSulfateExceedanceRate"))))
       )
-        
+      
     )
   )
 }
@@ -65,9 +46,36 @@ DSulfatePlotlySingleStation <- function(input,output,session, AUdata, stationSel
   
   DSulfate_oneStation <- reactive({
     req(ns(input$DSulfate_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$DSulfate_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$DSulfate_oneStationSelection) })
+  # because we are dealing with two variables here, do NOT filter by NA occurrences in case you drop unintended rows
+      #filter(!is.na(SULFATE_DISS)) %>%
+      #filter(!is.na(SULFATE_TOTAL)) })
   
-
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(DSulfate_oneStation())
+    parameterFilter <- dplyr::select(DSulfate_oneStation(), FDT_STA_ID:FDT_COMMENT, SULFATE_DISS, RMK_00946, SULFATE_TOTAL, RMK_00945)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('SULFATE_DISS','RMK_00946'), 'RMK_00946', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray')) %>%
+      formatStyle(c('SULFATE_TOTAL','RMK_00945'), 'RMK_00945', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+    
+  })
+  
+  
   output$DSulfateplotly <- renderPlotly({
     req(input$DSulfate_oneStationSelection, DSulfate_oneStation(), input$sulfateType)
     if(input$sulfateType == 'Dissolved Sulfate'){
@@ -120,7 +128,7 @@ DSulfatePlotlySingleStation <- function(input,output,session, AUdata, stationSel
   output$TSulfateRangeTableSingleSite <- renderTable({
     req(DSulfate_oneStation())
     if(grepl('PWS', unique(DSulfate_oneStation()$SPSTDS))){
-      return(dplyr::select(DSulfate_oneStation(), FDT_DATE_TIME, FDT_DEPTH, SULFATE_TOTAL) %>%
+      return(dplyr::select(citmonOutOfBacteria(DSulfate_oneStation(), SULFATE_TOTAL, RMK_00945), FDT_DATE_TIME, FDT_DEPTH, SULFATE_TOTAL) %>%
                filter(!is.na(SULFATE_TOTAL)) %>% #get rid of NA's
                mutate(PWSlimit = 250) %>%
                mutate(exceeds = ifelse(SULFATE_TOTAL > PWSlimit, T, F)) %>% # Identify where above PWS limit
@@ -130,21 +138,23 @@ DSulfatePlotlySingleStation <- function(input,output,session, AUdata, stationSel
     }  })
   
   output$stationTSulfateExceedanceRate <- renderTable({
-    req(#input$Chloride_oneStationSelection)#,
-      DSulfate_oneStation())
-    z <- TSulfatePWS(DSulfate_oneStation()) 
-    if(!is.null(z)){
-      return(z %>% dplyr::select(1:3) %>%# don't give assessment determination for single station
-               dplyr::rename(nSamples = PWS_Acute_Total_Sulfate_SAMP,
-                             nExceedance= PWS_Acute_Total_Sulfate_VIO,
-                             exceedanceRate= PWS_Acute_Total_Sulfate_exceedanceRate))# make it match everything else
+    req(DSulfate_oneStation())
+    if(grepl('PWS', unique(DSulfate_oneStation()$SPSTDS))){
+      x <- TSulfatePWS(citmonOutOfBacteria(DSulfate_oneStation(), SULFATE_TOTAL, RMK_00945))
+      if(nrow(x) >0) {
+        return(dplyr::select(x,1:3) %>%# don't give assessment determination for single station
+                 dplyr::rename(nSamples = PWS_Acute_Total_Sulfate_SAMP,
+                               nExceedance= PWS_Acute_Total_Sulfate_VIO,
+                               exceedanceRate= PWS_Acute_Total_Sulfate_exceedanceRate))# make it match everything else
+      }
     } else {
-      return(z)
-    }
-      
-    }) 
+      return('Station not designated PWS')
+    }  }) 
+  
+    
   
 }
+
 
 
 
@@ -159,10 +169,8 @@ server <- function(input,output,session){
     filter(AUData, FDT_STA_ID %in% input$stationSelection) })
   stationSelected <- reactive({input$stationSelection})
   
-  AUData <- reactive({filter(conventionals_HUC, ID305B_1 %in% 'VAW-I25R_HAM01A02' | 
-                               ID305B_1 %in% 'VAW-I25R_CAT04D12' | 
-                               ID305B_1 %in% 'VAW-I25R_CAT04C04')%>% 
-      left_join(WQSvalues, by = 'CLASS')})
+  
+  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% c('2-JKS030.65','2-JKS023.61','4APKP-4-DRBA' ))})
   
   callModule(DSulfatePlotlySingleStation,'DSulfate', AUData, stationSelected)
   

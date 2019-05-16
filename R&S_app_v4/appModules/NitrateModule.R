@@ -3,7 +3,8 @@ NitratePlotlySingleStationUI <- function(id){
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('Nitrate_oneStationSelectionUI')),
+      fluidRow(column(6,uiOutput(ns('Nitrate_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('Nitrateplotly')),
       fluidRow(
         column(8, h5('All nitrate records that are above the PWS criteria (where applicable) for the ',span(strong('selected site')),' are highlighted below.'),
@@ -11,8 +12,8 @@ NitratePlotlySingleStationUI <- function(id){
         column(4, h5('Individual nitrate exceedance statistics for the ',span(strong('selected site')),' are highlighted below.
                      If no data is presented, then the PWS criteria is not applicable to the station.'),
                tableOutput(ns("stationNitrateExceedanceRate"))))
-      )
-      )
+    )
+  )
 }
 
 
@@ -28,7 +29,30 @@ NitratePlotlySingleStation <- function(input,output,session, AUdata, stationSele
   
   Nitrate_oneStation <- reactive({
     req(ns(input$Nitrate_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$Nitrate_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$Nitrate_oneStationSelection) %>%
+      filter(!is.na(NITRATE))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(Nitrate_oneStation())
+    parameterFilter <- dplyr::select(Nitrate_oneStation(), FDT_STA_ID:FDT_COMMENT, NITRATE, RMK_NITRATE)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('NITRATE','RMK_NITRATE'), 'RMK_NITRATE', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
   
   output$Nitrateplotly <- renderPlotly({
     req(input$Nitrate_oneStationSelection, Nitrate_oneStation())
@@ -93,7 +117,7 @@ NitratePlotlySingleStation <- function(input,output,session, AUdata, stationSele
   output$NitrateRangeTableSingleSite <- renderTable({
     req(Nitrate_oneStation())
     if(grepl('PWS', unique(Nitrate_oneStation()$SPSTDS))){
-      return(dplyr::select(x, FDT_DATE_TIME, FDT_DEPTH, NITRATE) %>%
+      return(dplyr::select(citmonOutOfBacteria(Nitrate_oneStation(), NITRATE, RMK_NITRATE), FDT_DATE_TIME, FDT_DEPTH, NITRATE) %>%
                filter(!is.na(NITRATE)) %>% #get rid of NA's
                mutate(PWSlimit = 250) %>%
                mutate(exceeds = ifelse(NITRATE > PWSlimit, T, F)) %>% # Identify where above PWS limit
@@ -104,9 +128,15 @@ NitratePlotlySingleStation <- function(input,output,session, AUdata, stationSele
   
   output$stationNitrateExceedanceRate <- renderTable({
     req(input$Nitrate_oneStationSelection, Nitrate_oneStation())
-    nitratePWS(Nitrate_oneStation()) %>%
-      dplyr::select(1:3) %>%# don't give assessment determination for single station
-      dplyr::rename(nSamples = PWS_Acute_Nitrate_SAMP,nExceedance= PWS_Acute_Nitrate_VIO,exceedanceRate= PWS_Acute_Nitrate_exceedanceRate)}) # make it match everything else
+    if(grepl('PWS', unique(Nitrate_oneStation()$SPSTDS))){
+      x <- nitratePWS(citmonOutOfBacteria(Nitrate_oneStation(), NITRATE, RMK_NITRATE))
+      if(nrow(x) >0) {
+        return(dplyr::select(x,1:3) %>%# don't give assessment determination for single station
+                 dplyr::rename(nSamples = PWS_Acute_Nitrate_SAMP,nExceedance= PWS_Acute_Nitrate_VIO,exceedanceRate= PWS_Acute_Nitrate_exceedanceRate) ) } # make it match everything else
+    } else {
+      return('Station not designated PWS')
+    }  }) 
+  
   
   
 }

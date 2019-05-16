@@ -3,7 +3,8 @@ chlAPlotlySingleStationUI <- function(id){
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('chlA_oneStationSelectionUI')),
+      fluidRow(column(6,uiOutput(ns('chlA_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('chlAplotly'))  )
   )
 }
@@ -22,7 +23,31 @@ chlAPlotlySingleStation <- function(input,output,session, AUdata, stationSelecte
   
   chlA_oneStation <- reactive({
     req(ns(input$chlA_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$chlA_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$chlA_oneStationSelection) %>%
+      filter(!is.na(CHLOROPHYLL))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(chlA_oneStation())
+    parameterFilter <- dplyr::select(chlA_oneStation(), FDT_STA_ID:FDT_COMMENT, CHLOROPHYLL, RMK_32211)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('CHLOROPHYLL','RMK_32211'), 'RMK_32211', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
+  
   
   output$chlAplotly <- renderPlotly({
     req(input$chlA_oneStationSelection, chlA_oneStation())

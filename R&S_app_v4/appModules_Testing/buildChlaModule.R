@@ -1,45 +1,19 @@
 source('testingDataset.R')
 
+#AUData <- filter(conventionals_HUC, ID305B_1 %in% 'VAW-H01R_JMS04A00' | 
+#                   ID305B_2 %in% 'VAW-H01R_JMS04A00' | 
+#                   ID305B_2 %in% 'VAW-H01R_JMS04A00')%>% 
+#  left_join(WQSvalues, by = 'CLASS')
 
-z <-filter(conventionals, FDT_STA_ID %in% stationTable$FDT_STA_ID) %>%
-  filter(FDT_STA_ID %in% '2-DCK003.94')
-
-
-# No Assessment functions bc no std
-# no chl a data in test dataset so need to find new one
-#x <- filter(conventionals, STA_LV1_CODE == "STREAM") %>%
-#       filter(!is.na(CHLOROPHYLL)) %>%
-#  #distinct(FDT_STA_ID, .keep_all = T) %>%
-#  #select(FDT_STA_ID, Huc6_Vahu6, everything())
-#  filter(FDT_STA_ID == "2-JMS110.34")
-
-conventionals_HUC<- filter(conventionals, Huc6_Vahu6 %in% 'JU44') %>%
-  left_join(dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, SPSTDS, ID305B_1, ID305B_2, ID305B_3), by='FDT_STA_ID')
-
-AUData <- filter(conventionals_HUC, ID305B_1 %in% 'VAW-I21R_DCK01A06' | 
-                   ID305B_2 %in% 'VAW-I21R_DCK01A06' | 
-                   ID305B_2 %in% 'VAW-I21R_DCK01A06')%>% 
-  left_join(WQSvalues, by = 'CLASS')
-
-x <-filter(AUData, FDT_STA_ID %in% '2-DCK003.94') 
-
-
-# No Assessment functions bc no std but still need to count samples taken
-
-countchla <- function(x){
-  dplyr::select(x,FDT_STA_ID,FDT_DATE_TIME,PHOSPHORUS)%>% # Just get relevant columns
-    filter(!is.na(PHOSPHORUS)) %>% #get rid of NA's
-    summarize(NUT_CHLA_VIO= NA, NUT_CHLA_SAMP= n(), NUT_CHLA_STAT= NA)
-}
-
-
+x <-filter(conventionals_HUC, FDT_STA_ID %in% '4APKP-4-DRBA')# '4APKP-4-DRBA') '8-YRK022.70')#
 
 chlAPlotlySingleStationUI <- function(id){
   ns <- NS(id)
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('chlA_oneStationSelectionUI')),
+      fluidRow(column(6,uiOutput(ns('chlA_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('chlAplotly'))  )
   )
 }
@@ -58,7 +32,31 @@ chlAPlotlySingleStation <- function(input,output,session, AUdata, stationSelecte
   
   chlA_oneStation <- reactive({
     req(ns(input$chlA_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$chlA_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$chlA_oneStationSelection) %>%
+      filter(!is.na(CHLOROPHYLL))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(chlA_oneStation())
+    parameterFilter <- dplyr::select(chlA_oneStation(), FDT_STA_ID:FDT_COMMENT, CHLOROPHYLL, RMK_32211)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('CHLOROPHYLL','RMK_32211'), 'RMK_32211', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
+  
   
   output$chlAplotly <- renderPlotly({
     req(input$chlA_oneStationSelection, chlA_oneStation())
@@ -77,8 +75,10 @@ chlAPlotlySingleStation <- function(input,output,session, AUdata, stationSelecte
 
 
 ui <- fluidPage(
-  selectInput('stationSelection', 'Station Selection', choices = unique(AUData$FDT_STA_ID)),
-  helpText('Review each site using the single site visualization section. There are no WQS for Total Nitrogen.'),
+  helpText('Review each site using the single site visualization section, then 
+           proceed to the bottom of the page to find exceedance rate for the entire assessment unit.',br(),
+           span(strong('NOTE: The pH exceedance analysis results at the bottom of the page include data
+                       from ALL stations within the assessment unit.'))),
   chlAPlotlySingleStationUI('chlA')
 )
 
@@ -87,12 +87,10 @@ server <- function(input,output,session){
     filter(AUData, FDT_STA_ID %in% input$stationSelection) })
   stationSelected <- reactive({input$stationSelection})
   
-  AUData <- reactive({filter(conventionals_HUC, ID305B_1 %in% 'VAW-I21R_DCK01A06' | 
-                               ID305B_2 %in% 'VAW-I21R_DCK01A06' | 
-                               ID305B_2 %in% 'VAW-I21R_DCK01A06')%>% 
-      left_join(WQSvalues, by = 'CLASS')})
   
-  callModule(chlAPlotlySingleStation,'chlA', AUData, stationSelected)#input$stationSelection)
+  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% c('2-JKS023.61','4APKP-4-DRBA' ))})
+  
+  callModule(chlAPlotlySingleStation,'chlA', AUData, stationSelected)
   
 }
 

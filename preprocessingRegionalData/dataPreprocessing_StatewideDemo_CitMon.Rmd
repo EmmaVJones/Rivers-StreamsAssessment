@@ -398,6 +398,14 @@ previousCycleStationTable <- read_excel('data/final2020data/tbl_ir_mon_stations.
 
 fineTogether1 <- mutate(fineTogether, STATION_ID= FDT_STA_ID) %>%
   left_join(previousCycleStationTable, by= 'STATION_ID') %>%
+  select(`AU to connect to`, ID305B_1, everything())
+
+questions <- c('4ABDA-T16-FC', '4AIND-T20-FC', '4AGIL-T0-FC', '4AGIL-T2-FC', '4APCP-T4-FC', '4ABSA-T6-FC', '4AXNX-T8-FC', '4AXNY-T7-FC', '4ACCK-T12-FC', '4ASWC-T13-FC', '4AJUM-T15-FC')
+
+z <- filter(fineTogether1, FDT_STA_ID %in% questions)
+View(z)
+write.csv(z, 'processedStationData/citmon/changedAUs.csv',row.names=F)
+
   mutate(ID305B_1= ifelse(is.na(ID305B_1),`AU to connect to`,ID305B_1)) %>%
   dplyr::select(-`AU to connect to`)
 

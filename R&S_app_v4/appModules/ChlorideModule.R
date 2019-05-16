@@ -3,7 +3,8 @@ ClPlotlySingleStationUI <- function(id){
   tagList(
     wellPanel(
       h4(strong('Single Station Data Visualization')),
-      uiOutput(ns('Cl_oneStationSelectionUI')),
+      fluidRow(column(6, uiOutput(ns('Cl_oneStationSelectionUI'))),
+               column(6,actionButton(ns('reviewData'),"Review Raw Parameter Data",class='btn-block', width = '250px'))),
       plotlyOutput(ns('Clplotly')),
       fluidRow(
         column(8, h5('All chloride records that are above the PWS criteria (where applicable) for the ',span(strong('selected site')),' are highlighted below.'),
@@ -11,8 +12,8 @@ ClPlotlySingleStationUI <- function(id){
         column(4, h5('Individual chloride exceedance statistics for the ',span(strong('selected site')),' are highlighted below.
                      If no data is presented, then the PWS criteria is not applicable to the station.'),
                tableOutput(ns("stationChlorideExceedanceRate"))))
-      )
-      )
+    )
+  )
 }
 
 
@@ -28,7 +29,30 @@ ClPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
   
   Cl_oneStation <- reactive({
     req(ns(input$Cl_oneStationSelection))
-    filter(AUdata(),FDT_STA_ID %in% input$Cl_oneStationSelection)})
+    filter(AUdata(),FDT_STA_ID %in% input$Cl_oneStationSelection) %>%
+      filter(!is.na(CHLORIDE))})
+  
+  # Button to visualize modal table of available parameter data
+  observeEvent(input$reviewData,{
+    showModal(modalDialog(
+      title="Review Raw Data for Selected Station and Parameter",
+      helpText('This table subsets the conventionals raw data by station selected in Single Station Visualization Section drop down and
+               parameter currently reviewing. Scroll right to see the raw parameter values and any data collection comments. Data analyzed
+               by app is highlighted in gray (all DEQ data and non agency/citizen monitoring Level III), data counted by app and noted in
+               comment fields is highlighed in yellow (non agency/citizen monitoring Level II), and data NOT CONSIDERED in app is noted in
+               orange (non agency/citizen monitoring Level I).'),
+      DT::dataTableOutput(ns('parameterData')),
+      easyClose = TRUE))  })
+  
+  # modal parameter data
+  output$parameterData <- DT::renderDataTable({
+    req(Cl_oneStation())
+    parameterFilter <- dplyr::select(Cl_oneStation(), FDT_STA_ID:FDT_COMMENT, CHLORIDE, RMK_CHLORIDE)
+    
+    DT::datatable(parameterFilter, rownames = FALSE, 
+                  options= list(dom= 't', pageLength = nrow(parameterFilter), scrollX = TRUE, scrollY = "400px", dom='t')) %>%
+      formatStyle(c('CHLORIDE','RMK_CHLORIDE'), 'RMK_CHLORIDE', backgroundColor = styleEqual(c('Level II', 'Level I'), c('yellow','orange'), default = 'lightgray'))
+  })
   
   output$Clplotly <- renderPlotly({
     req(input$Cl_oneStationSelection, Cl_oneStation())
@@ -93,7 +117,7 @@ ClPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
   output$ChlorideRangeTableSingleSite <- renderTable({
     req(Cl_oneStation())
     if(grepl('PWS', unique(Cl_oneStation()$SPSTDS))){
-      return(dplyr::select(x, FDT_DATE_TIME, FDT_DEPTH, CHLORIDE) %>%
+      return(dplyr::select(citmonOutOfBacteria(Cl_oneStation(), CHLORIDE, RMK_CHLORIDE), FDT_DATE_TIME, FDT_DEPTH, CHLORIDE) %>%
                filter(!is.na(CHLORIDE)) %>% #get rid of NA's
                mutate(PWSlimit = 250) %>%
                mutate(exceeds = ifelse(CHLORIDE > PWSlimit, T, F)) %>% # Identify where above PWS limit
@@ -103,11 +127,14 @@ ClPlotlySingleStation <- function(input,output,session, AUdata, stationSelectedA
     }  })
   
   output$stationChlorideExceedanceRate <- renderTable({
-    req(#input$Chloride_oneStationSelection, 
-      Cl_oneStation())
-    chloridePWS(Cl_oneStation()) %>%
-      dplyr::select(1:3) %>%# don't give assessment determination for single station
-      dplyr::rename(nSamples = PWS_Acute_Chloride_SAMP,nExceedance= PWS_Acute_Chloride_VIO,exceedanceRate= PWS_Acute_Chloride_exceedanceRate)}) # make it match everything else
-
+    req(Cl_oneStation())
+    if(grepl('PWS', unique(Cl_oneStation()$SPSTDS))){
+      x <- chloridePWS(citmonOutOfBacteria(Cl_oneStation(), CHLORIDE, RMK_CHLORIDE))
+      if(nrow(x) >0) {
+        return(dplyr::select(x,1:3) %>%# don't give assessment determination for single station
+                 dplyr::rename(nSamples = PWS_Acute_Chloride_SAMP,nExceedance= PWS_Acute_Chloride_VIO,exceedanceRate= PWS_Acute_Chloride_exceedanceRate)) } # make it match everything else
+    } else {
+      return('Station not designated PWS')
+    }  }) 
   
 }
