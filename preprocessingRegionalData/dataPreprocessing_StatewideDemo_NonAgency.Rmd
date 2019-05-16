@@ -35,44 +35,39 @@ Bring in James' non agency monitoring dataset. I made it a csv before bringing i
 
 ```{r nonA2020, echo=F}
 # too big to read in using read_excel
-nonA <- read_csv('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/CitizenNonAgency/
-                 
-                 
-                 
-                 2020IR Citizen Ambient4.14.19 (2).csv') %>%
-  dplyr::select(Group_Station_ID:`DEQ QA Comments`) # drop junk columns
+nonA <- read_csv('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/CitizenNonAgency/2020IR NONA ambient.csv')  %>%
+  dplyr::select(Group_Station_ID:`DEQ QA Comments`) # drop junk columns for now
 
-#View(cit) # to look at dataset use this command
+#View(nonA) # to look at dataset use this command
 ```
 
-Bwork with spatial aspect, play with different ways of getting unique identifiers- group station Id (citizen assigned) and lat/long combos
+Work with spatial aspect, play with different ways of getting unique identifiers- group station Id (citizen assigned) and lat/long combos
 
 ```{r}
 
 # Count occurrences of each Group_Station_ID
-#cit1 <- dplyr::select(cit, Group_Station_ID, FDT_STA_ID, STA_DESC, Latitude, Longitude)
 
-cit1 <- distinct(cit, Group_Station_ID, FDT_STA_ID, Latitude, Longitude, .keep_all =T)  %>%
+nonA1 <- distinct(nonA, Group_Station_ID, FDT_STA_ID, Latitude, Longitude, .keep_all =T)  %>%
   dplyr::select(Group_Station_ID,  FDT_STA_ID:FDT_SPG_CODE, Latitude:STA_CBP_NAME)# drop data to avoid any confusion
 
-citCounts <- cit1 %>% 
-  group_by(Group_Station_ID, Latitude, Longitude) %>%
+nonACounts <- nonA1 %>% 
+  group_by(Group_Station_ID, FDT_STA_ID, Latitude, Longitude) %>%
   summarize(`Number of Station Sampling Events` = n())
 
-citDetailscit <- cit1 %>% 
-  group_by(Group_Station_ID, Latitude, Longitude) %>%
+nonADetails <- nonA1 %>% 
+  group_by(Group_Station_ID, FDT_STA_ID, Latitude, Longitude) %>%
   mutate(`Number of Station Sampling Events` = n(),
          STA_DESC_norm = str_replace_all(STA_DESC, "[^[:alnum:]]", " ")) %>%
   ungroup() %>%
   distinct() %>%
   arrange(Group_Station_ID) 
-citDetailscit$rowname <- c(1:nrow(citDetailscit))
+nonADetails$rowname <- c(1:nrow(nonADetails))
 # ugly addition singe add_rownames() alter data type
 
 
-missingLocation <- filter(citDetailscit, is.na(Latitude) | is.na(Longitude) | Latitude == 0 | Longitude == 0)
+missingLocation <- filter(nonADetails, is.na(Latitude) | is.na(Longitude) | Latitude == 0 | Longitude == 0)
 
-citDetailscit_sf <- citDetailscit %>%
+nonADetails_sf <- nonADetails %>%
   filter(!(rowname %in% missingLocation$rowname)) %>%
   st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
            remove = F, # don't remove these lat/lon cols from df
@@ -82,10 +77,10 @@ citDetailscit_sf <- citDetailscit %>%
 
 
 
-Below is the table output. For this cycle, there are `r nrow(citDetailscit_sf)` unique stations sampled.
+Below is the table output. For this cycle, there are `r nrow(nonADetails_sf)` unique stations sampled.
 
 ```{r conventionalsDistinctTable, echo=FALSE}
-#View(citDetailscit_sf)
+#View(nonADetails_sf)
 ```
 
 
@@ -128,12 +123,12 @@ Now we can subset unique citmon sites that fall into the assessment region we wa
 
 ```{r regional citmon, echo=F}
 
-citmon_D_Region <- st_join(citDetailscit_sf, assessmentLayerSelection, join = st_intersects) %>%
+nonADetails_D_Region <- st_join(nonADetails_sf, assessmentLayerSelection, join = st_intersects) %>%
   filter(!is.na(VAHU6)) %>% # only keep rows that joined
   dplyr::select(rowname, everything()) %>%
   select(-c(Shape_Leng, Shape_Area))
  
-cat(paste('Below are the ',nrow(citmon_D_Region),' unique stations in the ', regionCode,' region.', sep=''))
+cat(paste('Below are the ',nrow(nonADetails_D_Region),' unique stations in the ', regionCode,' region.', sep=''))
 ```
 
 ```{r DistinctSitesInRegionTable, echo=FALSE}
@@ -156,7 +151,7 @@ estuaryAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_estuarine.shp') %>%
    st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 
-citmon_D_Region_Estuary <- st_join(citmon_D_Region, estuaryAUs, join = st_intersects) %>%
+nonADetails_D_Region_Estuary <- st_join(nonADetails_D_Region, estuaryAUs, join = st_intersects) %>%
       filter(!is.na(OBJECTID))
 
 # Remove the # if you want to run any of the lines below to save out the estuary sites to look at now. You will save them out at the end of the script, so this is optional right now.
@@ -165,7 +160,7 @@ citmon_D_Region_Estuary <- st_join(citmon_D_Region, estuaryAUs, join = st_inters
 # you can change the file location like so:
 #write.csv(conventionals_D_Region_Estuary, 'C:/Assessment/2020/dataProcessing/conventionals_D_Region_Estuary.csv', row.names = F) 
 
-citmon_D_Region_NoEstuary <- filter(citmon_D_Region, !(FDT_STA_ID %in% citmon_D_Region_Estuary$FDT_STA_ID))
+nonADetails_D_Region_NoEstuary <- filter(nonADetails_D_Region, !(FDT_STA_ID %in% nonADetails_D_Region_Estuary$FDT_STA_ID))
 rm(estuaryAUs) # remove from memory
 ```
 
@@ -176,7 +171,7 @@ Below is the table of sites that are estuarine.
 ```
 
 ```{r inlineText2,echo=F}
-cat(paste('Removing the above sites, the unique citmon sites have gone from ', nrow(citmon_D_Region),' to ',nrow(citmon_D_Region_NoEstuary),'. The next step is to find the lake/reservoir stations and link them to the appropriate AU and WQS for analyses in the Lake Assessment App.', sep=''))
+cat(paste('Removing the above sites, the unique citmon sites have gone from ', nrow(nonADetails_D_Region),' to ',nrow(nonADetails_D_Region_NoEstuary),'. The next step is to find the lake/reservoir stations and link them to the appropriate AU and WQS for analyses in the Lake Assessment App.', sep=''))
 ```
 
 ### Assessment Unit Organization
@@ -193,21 +188,21 @@ previousCycleStationTable <- read_excel('data/final2020data/tbl_ir_mon_stations.
 
 
 # Join unique sites from current cycle to last cycle's station table to see what already has AU info
-citmon_D_Region_AU <- mutate(citmon_D_Region_NoEstuary, STATION_ID = FDT_STA_ID) %>% # make joining column
+nonADetails_D_Region_AU <- mutate(nonADetails_D_Region_NoEstuary, STATION_ID = FDT_STA_ID) %>% # make joining column
     left_join(previousCycleStationTable, by='STATION_ID') # join to get ID305B info
 
 # Only work with sites that don't already have AU info
-citmon_D_Region_NoAU <- filter(citmon_D_Region_AU, is.na(ID305B_1))
+nonADetails_D_Region_NoAU <- filter(nonADetails_D_Region_AU, is.na(ID305B_1))
 #View(conventionals_D_Region_NoAU)  
 
 # Keep the stations with AU information to the side for later use
-citmon_D_Region_AU <- filter(citmon_D_Region_AU, !is.na(ID305B_1))
+nonADetails_D_Region_AU <- filter(nonADetails_D_Region_AU, !is.na(ID305B_1))
 #View(conventionals_D_Region_AU)
 
 # make sure we didnt lose anyone
-nrow(citmon_D_Region_NoAU) + nrow(citmon_D_Region_AU) == nrow(citmon_D_Region) 
+nrow(nonADetails_D_Region_NoAU) + nrow(nonADetails_D_Region_AU) == nrow(nonADetails_D_Region) 
 
-rm(citmon_D_Region_NoEstuary) # clean up workspace
+rm(nonADetails_D_Region_NoEstuary) # clean up workspace
 ```
 
 
@@ -218,13 +213,13 @@ The table below illustrates all the  unique citmon sites that matched stations f
 
 The table below illustrates all the unique citmon sites that did not match any stations from 2018 IR station table by STATION_ID/FDT_STA_ID.
 ```{r citmon_D_Region_NoAU, echo=F}
-#View(citmon_D_Region_Estuary)
+#View(nonADetails_D_Region_Estuary)
 ```
 
 #### Last Cycle Reservoir Assessment Layer 
 
 ```{r inlineText3, echo=F}
-cat(paste('Working with the ', nrow(citmon_D_Region_NoAU),' sites that did not connect to a STATION_ID/FDT_STA_ID from last cycle, we will first do a spatial join to the reservoir/lakes AUs to see if any sites are lake sites before using the more computationally intensive stream snapping process.', sep=''))
+cat(paste('Working with the ', nrow(nonADetails_D_Region_NoAU),' sites that did not connect to a STATION_ID/FDT_STA_ID from last cycle, we will first do a spatial join to the reservoir/lakes AUs to see if any sites are lake sites before using the more computationally intensive stream snapping process.', sep=''))
 ```
 
 ```{r reservoirStatewide, echo=F, results = 'hide'}
@@ -232,27 +227,27 @@ reservoirAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_reservoir.shp') %
    st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 # find lake AUs, if Any
-citmon_D_Region_Lakes <- st_join(citmon_D_Region_NoAU, reservoirAUs, join = st_intersects) %>%
+nonADetails_D_Region_Lakes <- st_join(nonADetails_D_Region_NoAU, reservoirAUs, join = st_intersects) %>%
   filter(!is.na(OBJECTID)) %>% # only keep rows where join successful
   mutate(ID305B_1 = ID305B) %>% # rename ID305B_1 field by the joined reservoir ID305B
-  dplyr::select(names(citmon_D_Region_AU))
+  dplyr::select(names(nonADetails_D_Region_AU))
 
 # add lake AU sites to citmon_D_Region_AU
-citmon_D_Region_AU <- rbind(citmon_D_Region_AU, citmon_D_Region_Lakes)
+nonADetails_D_Region_AU <- rbind(nonADetails_D_Region_AU, nonADetails_D_Region_Lakes)
 
 # and remove lake AU sites from the sites without AUs
-citmon_D_Region_NoAU <- filter(citmon_D_Region_NoAU, !(rowname %in% citmon_D_Region_Lakes$rowname))#filter(citmon_D_Region_NoAU, !(FDT_STA_ID %in% citmon_D_Region_Lakes$FDT_STA_ID))
+nonADetails_D_Region_NoAU <- filter(nonADetails_D_Region_NoAU, !(rowname %in% nonADetails_D_Region_Lakes$rowname))#filter(nonADetails_D_Region_NoAU, !(FDT_STA_ID %in% nonADetails_D_Region_Lakes$FDT_STA_ID))
 
 # make sure we didn't lose anyone
-nrow(citmon_D_Region_NoAU) + nrow(citmon_D_Region_AU) == nrow(citmon_D_Region) 
+nrow(nonADetails_D_Region_NoAU) + nrow(nonADetails_D_Region_AU) == nrow(nonADetails_D_Region) 
 
-rm(reservoirAUs); rm(citmon_D_Region_Lakes) # remove from memory
+rm(reservoirAUs); rm(nonADetails_D_Region_Lakes) # remove from memory
 ```
 
 #### Last Cycle Riverine Assessment Layer
 
 ```{r inlineText4, echo=F}
-cat(paste('The last step for AU organization after we have removed any estuary sites and dealt with all sites that are in lake AUs is to automatically snap the', nrow(citmon_D_Region_NoAU), 'remaining sites to riverine AUs.',sep=' '))
+cat(paste('The last step for AU organization after we have removed any estuary sites and dealt with all sites that are in lake AUs is to automatically snap the', nrow(nonADetails_D_Region_NoAU), 'remaining sites to riverine AUs.',sep=' '))
 ```
 
 A custom, automated snapping tool is run below. The function buffers each site using the user defined sequence (bufferDistances). You do not need to change the bufferDistances variable, but commented out code demonstrates how you can if you want to increase/decrease the maximum buffer distance or breaks. 
@@ -268,7 +263,7 @@ The next chunk will bring in the riverine AU layer from the previous cycle, comp
 riverineAUs <-  st_read('GIS/draft2018_spatialData/va_2018_aus_riverine.shp') %>%
   st_transform(crs = 102003)  # transform to Albers for spatial intersection
 
-Regional_Sites_AU <- snapAndOrganizeAU_citmon(citmon_D_Region_NoAU, riverineAUs,  bufferDistances = seq(10,80,by=10))
+Regional_Sites_AU <- snapAndOrganizeAU_citmon(nonADetails_D_Region_NoAU, riverineAUs,  bufferDistances = seq(10,80,by=10))
 # this buffers up to 100 m by 10 m
 #Regional_Sites_AU <- snapAndOrganizeAU(citmon_D_Region_NoAU, riverineAUs, bufferDistances = seq(10,100,by=10)) 
 # this buffers up to 50 m by 5 m
@@ -282,8 +277,8 @@ We can now filter the results to figure out sites that worked and sites that sti
 
 Below are the sites that still need work.
 ```{r conventionals_D_Region_NoAU still, echo=F}
-citmon_D_Region_NoAU <- filter(Regional_Sites_AU, is.na(ID305B_1)) %>%
-  left_join(dplyr::select(citmon_D_Region, rowname:FDT_STA_ID, Latitude, Longitude) %>% st_drop_geometry(), 
+nonADetails_D_Region_NoAU <- filter(Regional_Sites_AU, is.na(ID305B_1)) %>%
+  left_join(dplyr::select(nonADetails_D_Region, rowname:FDT_STA_ID, Latitude, Longitude) %>% st_drop_geometry(), 
             by = c( 'FDT_STA_ID', 'Latitude', 'Longitude')) %>% # join back to original dataset that went into snapping function to get rowname and Group_Station_ID
   dplyr::select(rowname, Group_Station_ID, everything())
 
@@ -296,30 +291,98 @@ These sites will still be snapped to WQS, but they still need AU information bef
 Below are the sites that worked. These can be combined with our conventionals_D_Region_AU layer now. 
 ```{r Regional_Sites_AUgood, echo=F}
 Regional_Sites_AU <- filter(Regional_Sites_AU, !is.na(ID305B_1)) %>%
-  left_join(dplyr::select(citmon_D_Region, rowname:FDT_STA_ID, Latitude, Longitude) %>% st_drop_geometry(), 
+  left_join(dplyr::select(nonADetails_D_Region, rowname:FDT_STA_ID, Latitude, Longitude) %>% st_drop_geometry(), 
             by = c( 'FDT_STA_ID', 'Latitude', 'Longitude')) %>% # join back to original dataset that went into snapping function to get rowname and Group_Station_ID
   dplyr::select(rowname, Group_Station_ID, everything())
 
 #View(Regional_Sites_AU)
 
-# only bind citmon_D_Region_NoAU if it has records, otherwise the bind won't work
-if(nrow(Regional_Sites_AU) > 0 & nrow(citmon_D_Region_NoAU) > 0 ){
-  citmon_D_Region_AU <- rbind(citmon_D_Region_AU, 
+# only bind nonADetails_D_Region_NoAU if it has records, otherwise the bind won't work
+if(nrow(Regional_Sites_AU) > 0 & nrow(nonADetails_D_Region_NoAU) > 0 ){
+  nonADetails_D_Region_AU <- rbind(nonADetails_D_Region_AU, 
                               Regional_Sites_AU %>% st_transform( st_crs(4326)), 
-                              citmon_D_Region_NoAU %>% st_transform( st_crs(4326)))}
-if(nrow(Regional_Sites_AU) > 0 & nrow(citmon_D_Region_NoAU) == 0 ){
-  citmon_D_Region_AU <- rbind(citmon_D_Region_AU, 
+                              nonADetails_D_Region_NoAU %>% st_transform( st_crs(4326)))}
+if(nrow(Regional_Sites_AU) > 0 & nrow(nonADetails_D_Region_NoAU) == 0 ){
+  nonADetails_D_Region_AU <- rbind(nonADetails_D_Region_AU, 
                               Regional_Sites_AU %>% st_transform( st_crs(4326)))}
-if(nrow(Regional_Sites_AU) == 0 & nrow(citmon_D_Region_NoAU) > 0 ){
-  citmon_D_Region_AU <- rbind(citmon_D_Region_AU, 
-                               citmon_D_Region_NoAU %>% st_transform( st_crs(4326)))}
+if(nrow(Regional_Sites_AU) == 0 & nrow(nonADetails_D_Region_NoAU) > 0 ){
+  nonADetails_D_Region_AU <- rbind(nonADetails_D_Region_AU, 
+                               nonADetails_D_Region_NoAU %>% st_transform( st_crs(4326)))}
 
 # save just AU info
-write.csv(citmon_D_Region_AU, 'processedStationData/citmon/BRRO_AU_citmon.csv', row.names = F)
-st_write(citmon_D_Region_AU, 'processedStationData/citmon/BRRO_AU_citmon.shp')
+write.csv(nonADetails_D_Region_AU, 'processedStationData/citmon/BRRO_AU_nonA.csv', row.names = F)
+st_write(nonADetails_D_Region_AU, 'processedStationData/citmon/BRRO_AU_nonA.shp')
 
 rm(Regional_Sites_AU) # clean up workspace
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Assessment QA time out
+
+So those above datasets need to be thoroughly reviewed and QAed to make sure each station is in fact unique and have all the correct associated data with it. When that is done, you can bring the data back in.
+
+```{r citmon timeIn}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(readxl))
+suppressPackageStartupMessages(library(sf))
+suppressPackageStartupMessages(library(shiny))
+suppressPackageStartupMessages(library(mapview))
+suppressPackageStartupMessages(library(leaflet))
+suppressPackageStartupMessages(library(miniUI))
+suppressPackageStartupMessages(library(DT))
+suppressPackageStartupMessages(library(RColorBrewer))
+
+source('snappingFunctions/snapFunctions.R') # snapping functions
+source('snappingFunctions/snapOrganizationFunctions_citmon.R') # functions to do stuff with snapping functions
+
+citMonAU <- read_excel('processedStationData/citmon/CitMon_stations_QA_Final.xlsx','Paula_NEW')
+
+monitor <- read_excel('processedStationData/citmon/MONITOR16May2019.xlsx')
+```
+ 
+First let's delete any weird things they want gone and then it is time to correct the FDT_STA_ID based on Mary and Paula's calls. We will replace the FDT_STA_ID assigned by James with Mary and Paula's call and then update all the associated information accordingly based on the MONITOR database.
+
+```{r delete weird things}
+# get the rows they want deleted
+citMonAU1 <- filter(citMonAU, !(grepl('delete',citMonAU$`AllMon station`)))
+```
+
+Now override James' assigned station id and join to MONITOR to get Mary/Paula approved coordinates. Not going to fix AU's yet because known issues with last cycle ID305B_1 column.
+
+```{r Mary/paula overrule}
+citMonAU2 <- mutate(citMonAU1, FDT_STA_ID = ifelse(is.na(`AllMon station`), FDT_STA_ID, `AllMon station`),
+                    STATION = FDT_STA_ID) 
+citMonAU3 <- left_join(citMonAU2, monitor, by='STATION') %>%
+  dplyr::select(-c(`AllMon station`))
+
+
+
+notfine <- filter(citMonAU2, is.na(TRECORD))
+```
+
+
+
+
+
+
+
+
 
 
 ### WQS Organization

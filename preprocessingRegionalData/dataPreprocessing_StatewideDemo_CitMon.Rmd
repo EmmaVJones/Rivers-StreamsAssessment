@@ -353,7 +353,7 @@ source('snappingFunctions/snapOrganizationFunctions_citmon.R') # functions to do
 
 citMonAU <- read_excel('processedStationData/citmon/CitMon_stations_QA_Final.xlsx','Paula_NEW')
 
-monitor <- read_excel('processedStationData/citmon/MONITOR.xlsx')
+monitor <- read_excel('processedStationData/citmon/MONITOR16May2019.xlsx')
 ```
  
 First let's delete any weird things they want gone and then it is time to correct the FDT_STA_ID based on Mary and Paula's calls. We will replace the FDT_STA_ID assigned by James with Mary and Paula's call and then update all the associated information accordingly based on the MONITOR database.
@@ -363,10 +363,26 @@ First let's delete any weird things they want gone and then it is time to correc
 citMonAU1 <- filter(citMonAU, !(grepl('delete',citMonAU$`AllMon station`)))
 ```
 
-```{r split based on Mary/paula overrule}
-fine <- filter(citMonAU1, is.na(`AllMon station`)) %>%
+Now override James' assigned station id and join to MONITOR to get Mary/Paula approved coordinates. Not going to fix AU's yet because known issues with last cycle ID305B_1 column.
+
+```{r Mary/paula overrule}
+citMonAU2 <- mutate(citMonAU1, FDT_STA_ID = ifelse(is.na(`AllMon station`), FDT_STA_ID, `AllMon station`),
+                    STATION = FDT_STA_ID) 
+citMonAU3 <- left_join(citMonAU2, monitor, by='STATION') %>%
   dplyr::select(-c(`AllMon station`))
-notfine <- filter(citMonAU1, !is.na(`AllMon station`))
+
+
+
+notfine <- filter(citMonAU2, is.na(TRECORD))
+
+
+
+
+
+ %>% # only keep things that worked
+  mutate(FDT_STA_ID = STATION, STA_DESC = DESCRIP, Latitude = MDEC_LAT, Longitude = MDECLONG) %>%
+  dplyr::select(`AU to connect to`,names(fine))
+
 ```
 
 Start fixing the not fine.
