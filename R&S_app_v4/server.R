@@ -6,7 +6,7 @@ source('AUshapefileLocation.R')
 
 # Draft 2020 data
 #conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
-conventionals <- read_csv('data/final2020data/conventionals_final2020_citmon1.csv') %>%
+conventionals <- read_csv('data/final2020data/conventionals_final2020_citmonNonAgency.csv') %>%
   filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
   rename("FDT_TEMP_CELCIUS"  ="TEMPERATURE_00010_DEGREES CENTIGRADE",
          "FDT_TEMP_CELCIUS_RMK" = "FDT_TEMP_CELCIUS_RMK",  
@@ -101,7 +101,7 @@ shinyServer(function(input, output, session) {
     suppressWarnings(st_intersection(st_zm(regionalAUs), huc6_filter()))})
  
   
-  # Station Map
+  # Watershed Map
   output$VAmap <- renderLeaflet({
     req(region_filter(), basin_filter(), huc6_filter())
     m <- mapview(basin_filter(),label= basin_filter()$VAHU6, layer.name = 'Basin Chosen',

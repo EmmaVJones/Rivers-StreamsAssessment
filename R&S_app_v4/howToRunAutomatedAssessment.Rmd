@@ -42,7 +42,7 @@ regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS
 
 
 # Roger's conventionals data pull
-conventionals <- read_csv('data/final2020data/conventionals_final2020_citmon1.csv') %>%
+conventionals <- read_csv('data/final2020data/conventionals_final2020_citmonNonAgency.csv') %>%
 #conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
   filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
   rename("FDT_TEMP_CELCIUS"  ="TEMPERATURE_00010_DEGREES CENTIGRADE",
@@ -90,7 +90,7 @@ stationTable <-
   #read_csv('processedStationData/RegionalResultsRiverine_TROFINAL.csv') %>%
   
    # BRRO WITH citmon
-  read_csv('processedStationData/RegionalResultsRiverine_BRROCitMon.csv') %>%
+  read_csv('processedStationData/RegionalResultsRiverine_BRROCitMonNonAgencyFINAL.csv') %>%
  
   
   ## BRRO no citmon
@@ -106,6 +106,13 @@ stationTable <-
   mutate(VAHU6 = ifelse(is.na(VAHU6), Huc6_Vahu6, VAHU6)) 
 
 monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
+
+
+
+citMon <- read_csv('data/CitMonOrganizedDataBRRO.csv')
+
+nonA <- read_csv('data/NonAgencyOrganizedDataBRRO.csv')
+
 
 ```
 
@@ -199,7 +206,36 @@ for(i in 1:nrow(stationTable)){
   # full station table
   chronicAmmonia <- chronicNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
                      dplyr::select(ChronicAmmonia_VIO)
+  
+  #citmon data being weird, have to run in own loop
+  # Only do this if citmon or NonAgency data
+  if(all(stationData$STA_LV3_CODE %in% c("CMON", "NONA", "NONA "))){
+      # for conventionals data
+      a <- 12:117
+      n <- length(a)
+      
+      holder <- NA
+      
+      for(k in a[seq(1,n,2)]){ 
+        x <- stationData[,c(k, k+1)]
+        holder[k] <- countSamplesAtLevels(x)
+      }
+      
+      citMonStationData <- filter(citMon, FDT_STA_ID %in% stationTable$FDT_STA_ID[i])
+      citmonExtras <- colSums(!is.na(citMonStationData[,138:165]))[!(colSums(!is.na(citMonStationData[,138:165])) ==0 )]
+      citmonExtras2 <- as.data.frame(citmonExtras) %>% rownames_to_column() %>% mutate(together = paste(rowname, ":",citmonExtras))
+      
+      nonAStationData <- filter(nonA, FDT_STA_ID %in% stationTable$FDT_STA_ID[i])
+      nonAExtras <- colSums(!is.na(nonAStationData[,137:164]))[!(colSums(!is.na(nonAStationData[,137:164])) ==0 )]
+      nonAExtras2 <- as.data.frame(nonAExtras) %>% rownames_to_column() %>% mutate(together = paste(rowname, ":",nonAExtras))
+      
+      citmonAllDataByLevel <- paste(paste0(holder[!is.na(holder)], collapse = '; '),citmonExtras2$together,';', nonAExtras2$together) 
+  } else {
+      citmonAllDataByLevel <- NULL
+  }
 
+
+  
   
   results <- cbind(StationTableStartingData(stationData),
                  tempExceedances(stationData),
@@ -238,7 +274,8 @@ for(i in 1:nrow(stationTable)){
                  # countchla(stationData),
                  # Chronic Ammonia printed in Comments
                  data.frame(COMMENTS= paste('WAT_TOX fields indicate acute ammonia calculations. Chronic Ammonia Violations: ',chronicAmmonia[1,], ";",
-                                            collapseAllDataByLevel(stationData, 12:117)))) %>%
+                                            citmonAllDataByLevel))) %>%
+                                            #collapseAllDataByLevel(stationData, 12:117)))) %>%
                                             #citmonComment(stationData)))) %>%
   dplyr::select(-ends_with('exceedanceRate'))
 

@@ -559,33 +559,127 @@ noWQS <- read_csv('data/BRRO/RegionalResultsCombined_NoWQS_BRRO.csv')
 fixWQS <- filter(RegionalResultsCombinedAll3, FDT_STA_ID %in% noWQS$FDT_STA_ID)
 fineWQS <- filter(RegionalResultsCombinedAll3, !(FDT_STA_ID %in% fixWQS$FDT_STA_ID))
 
-riverine <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/updatedWQS/updatedRiverineStatewide.shp')
+# Cant fix riverine all at once because the individual  basin layer WQS is different than the whole state layer WQS
+# Mary assigned OBJECTID based on basin layer WQS so need to find each basin, join to each layer by OBJECTID, 
+# and repeat for next basin
 
-fixWQS_R <- filter(fixWQS, lakeStation == 'river') %>%
-  dplyr::select(-c(GNIS_ID:Shape_Leng)) %>% # drop columns that I will repopulate from spatial layer
-  left_join(riverine, by= "OBJECTID") %>%
-  dplyr::select(names(RegionalResultsCombinedAll3))
+check <- fixWQS %>% st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+                 remove = F, # don't remove these lat/lon cols from df
+                 crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
+st_write(check,'data/BRRO/fixWQS.shp')
+```
 
-rm(riverine)
-
-reservoirWQS <- st_read('GIS/updatedWQS/reservoir.shp') %>%
-   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
-
-fixWQS_L <- filter(fixWQS, lakeStation == 'lake') %>%
-  dplyr::select(-c(GNIS_ID:Shape_Leng)) %>% # drop columns that I will repopulate from spatial layer
-  left_join(reservoirWQS, by= "OBJECTID") %>%
-  mutate(StreamType=NA) %>%
-  dplyr::select(names(RegionalResultsCombinedAll3)) 
-rm(reservoirWQS)
+```{r}
+unique(fixWQS$Basin)
+```
 
 
-names(fixWQS_R) == names(fixWQS_L)
 
-fixedWQS <- rbind(fixWQS_R, fixWQS_L)
+Start with James
+```{r James WQS manual}
 
+james <-  sf::st_read(dsn = "C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/updatedWQS/James_071218.gdb", 
+                      layer = "riverine") 
+james$OBJECTID <- as.numeric(row.names(james))
+
+jamesSites <- filter(fixWQS, Basin == 'James River Basin') %>%
+  select(-c(GNIS_ID:Shape_Leng)) %>%
+  left_join(james, by='OBJECTID') %>%
+  rename(WQS_COMMEN= 'WQS_COMMENT', SECTION_DE= 'SECTION_DESCRIPTION', Shape_Leng = 'Shape_Length') %>%
+  select(names(fixWQS))
+rm(james)
+```
+
+Roanoke River Basin
+```{r James WQS manual}
+roa <-  sf::st_read(dsn = "C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/updatedWQS/RoanokeYadkin_07262018.gdb", 
+                      layer = "riverine") 
+roa$OBJECTID <- as.numeric(row.names(roa))
+
+roaSites <- filter(fixWQS, Basin == 'Roanoke River Basin') 
+
+# river
+roaR <- filter(roaSites, lakeStation == 'river') %>%
+  select(-c(GNIS_ID:Shape_Leng)) %>%
+  left_join(roa, by='OBJECTID') %>%
+  rename(WQS_COMMEN= 'WQS_COMMENT', SECTION_DE= 'SECTION_DESCRIPTION', Shape_Leng = 'Shape_Length') %>%
+  select(names(fixWQS))
+rm(roa)
+
+# lake
+roa <-  sf::st_read(dsn = "C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/updatedWQS/RoanokeYadkin_07262018.gdb", 
+                      layer = "reservoir") 
+roa$OBJECTID <- as.numeric(row.names(roa))
+
+roaLake <- filter(roaSites, lakeStation== 'lake') %>%
+  select(-c(GNIS_ID:Shape_Leng)) %>%
+  left_join(roa, by='OBJECTID') %>%
+  rename( SECTION_DE= 'SECTION_DESCRIPTION', Shape_Leng = 'Shape_Length') %>%
+  mutate(WQS_COMMEN= NA, GNIS_ID= NA,GNIS_Name= NA,FType= NA,FCode= NA,BASIN= NA,
+         Edit_Date= NA, StreamType= NA, Backlog= NA) %>%
+  select(names(fixWQS))
+rm(roa)
+```
+
+
+
+New River Basin
+```{r James WQS manual}
+
+new <-  sf::st_read(dsn = "C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/updatedWQS/New_07262018.gdb", 
+                      layer = "riverine") 
+new$OBJECTID <- as.numeric(row.names(new))
+
+newSites <- filter(fixWQS, Basin == 'New River Basin') %>%
+  select(-c(GNIS_ID:Shape_Leng)) %>%
+  left_join(new, by='OBJECTID') %>%
+  rename(WQS_COMMEN= 'WQS_COMMENT', SECTION_DE= 'SECTION_DESCRIPTION', Shape_Leng = 'Shape_Length') %>%
+  select(names(fixWQS))
+rm(new)
+```
+
+
+
+Make sure we didnt lose anyone and smash all together
+
+```{r}
+nrow(jamesSites) + nrow(roaR) + nrow(roaLake) + nrow(newSites) == nrow(fixWQS)
+
+fixedWQS <- bind_rows(jamesSites, roaR, roaLake, newSites)
 
 # Add back to whole 
 RegionalResultsCombinedAll4 <- rbind(fineWQS, fixedWQS)
+
+```
+
+
+
+```{r old way before knew OBJECTID all messed up}
+#fixWQS_R <- filter(fixWQS, lakeStation == 'river') %>%
+#  dplyr::select(-c(GNIS_ID:Shape_Leng)) %>% # drop columns that I will repopulate from spatial layer
+#  left_join(riverine, by= "OBJECTID") %>%
+#  dplyr::select(names(RegionalResultsCombinedAll3))
+
+#rm(riverine)
+
+#reservoirWQS <- st_read('GIS/updatedWQS/reservoir.shp') %>%
+#   st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+#fixWQS_L <- filter(fixWQS, lakeStation == 'lake') %>%
+#  dplyr::select(-c(GNIS_ID:Shape_Leng)) %>% # drop columns that I will repopulate from spatial layer
+#  left_join(reservoirWQS, by= "OBJECTID") %>%
+#  mutate(StreamType=NA) %>%
+#  dplyr::select(names(RegionalResultsCombinedAll3)) 
+#rm(reservoirWQS)
+
+
+#names(fixWQS_R) == names(fixWQS_L)
+
+#fixedWQS <- rbind(fixWQS_R, fixWQS_L)
+
+
+# Add back to whole 
+#RegionalResultsCombinedAll4 <- rbind(fineWQS, fixedWQS)
 ```
 
 
@@ -595,11 +689,11 @@ Now split river and lake sites by AU designation.
 
 
 ```{r split up freshwater}
-lakeStations <- filter(RegionalResultsCombinedAll3, lakeStation=='lake') %>%
+lakeStations <- filter(RegionalResultsCombinedAll4, lakeStation=='lake') %>%
   select(-c(lakeStation))
 
 # Make the rest riverine
-riverStations <- filter(RegionalResultsCombinedAll3, lakeStation != 'lake') %>%
+riverStations <- filter(RegionalResultsCombinedAll4, lakeStation != 'lake') %>%
   select(-c(lakeStation))
 
 # Make sure we didnt lose anyone
@@ -620,6 +714,37 @@ write.csv(riverStations, paste('processedStationData/final2020data/RegionalResul
 
 
 ```
+
+
+
+```{r}
+rm(roaSites); rm(roaR); rm(roaLake); rm(riverStations); rm(noWQS); rm(newSites); rm(lakeStations); rm(fixWQS); rm(fixedWQS); rm(jamesSites);rm(fineWQS)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -30,7 +30,8 @@ WQSvalues <- tibble(CLASS_BASIN = c('I',"II","II_7","III","IV","V","VI","VII"),
 
 
 #conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
-conventionals <- read_csv('data/final2020data/conventionals_final2020_citmon1.csv') %>%
+#conventionals <- read_csv('data/final2020data/conventionals_final2020_citmon1.csv') %>%
+conventionals <- read_csv('data/final2020data/conventionals_final2020_citmonNonAgency.csv') %>%
   filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
   rename("FDT_TEMP_CELCIUS"  ="TEMPERATURE_00010_DEGREES CENTIGRADE",
          "FDT_TEMP_CELCIUS_RMK" = "FDT_TEMP_CELCIUS_RMK",  
@@ -69,8 +70,10 @@ stationTable <-
   #read_csv('processedStationData/RegionalResultsRiverine_TROFINAL.csv') %>%
   
   # BRRO WITH citmon
-  read_csv('processedStationData/RegionalResultsRiverine_BRROCitMon.csv') %>%
+  #read_csv('processedStationData/RegionalResultsRiverine_BRROCitMon.csv') %>%
   
+  # BRRO with citmon and nonAgency
+  read_csv('processedStationData/RegionalResultsRiverine_BRROCitMonNonAgencyFINAL.csv') %>%
   
   ## BRRO no citmon
   #read_csv('processedStationData/RegionalResultsRiverine_BRROFINAL.csv') %>%

@@ -11,7 +11,7 @@ server <- function(input,output,session){
   stationSelected <- reactive({input$stationSelection})
   
   
-  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% c('4APKP-4-DRBA','2-JKS018.68'))})
+  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% c('4APKP-4-DRBA','2-JKS018.68','2CES-VT22-UVA'))})
   
   output$selection <- renderUI({
     req(AUData)

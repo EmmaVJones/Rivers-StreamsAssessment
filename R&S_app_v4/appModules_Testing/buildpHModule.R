@@ -171,7 +171,7 @@ server <- function(input,output,session){
   stationSelected <- reactive({input$stationSelection})
   
   
-  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% c('2-JKS018.68','4APKP-4-DRBA' ))})
+  AUData <- reactive({filter(conventionals_HUC, FDT_STA_ID %in% c('2-JKS018.68','4APKP-4-DRBA','2CES-VT22-UVA' ))})
   #AUData <- reactive({filter(conventionals_HUC, ID305B_1 %in% 'VAW-H01R_JMS04A00' | 
   #                             ID305B_2 %in% 'VAW-H01R_JMS04A00' | 
   #                             ID305B_2 %in% 'VAW-H01R_JMS04A00')%>% 

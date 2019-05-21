@@ -18,7 +18,7 @@ source('appModules/multipleDependentSelectizeArguments.R')
 source('newBacteriaStandard_workingUpdatedRecSeason.R') # version with 2/3 samples in April-Oct
 #conventionals_sf <- readRDS('data/conventionals_sf_draft2020.RDS')
 #conventionals_sf <- readRDS('data/conventionals_sf_final2020.RDS')
-conventionals_sf <- readRDS('data/conventionals_sf_final2020_citmon1.RDS')
+conventionals_sf <- readRDS('data/conventionals_sf_final2020_citmonNonAgency.RDS')
 
 
 monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
@@ -337,9 +337,16 @@ citmonOutOfBacteria <- function(x, bacteriaType, bacteriaTypeRMK){
   bacteriaType1 <- enquo(bacteriaType)
   bacteriaTypeRMK1 <- enquo(bacteriaTypeRMK)
   
-  #dplyr:: select(x, FDT_DATE_TIME2, !!bacteriaType1, !!bacteriaTypeRMK1) %>% # Just get relavent columns,
+  # catch for James not including level but not dropping DEQ data
+  if(all(x$STA_LV3_CODE %in% c("CMON", "NONA", "NONA "))){
+    # first get rid of no remarks
+    filter(x, !is.na( !!bacteriaTypeRMK1)) %>%
+      # then get rid of level I and II data
+      filter( !( !!bacteriaTypeRMK1  %in% c('Level II', 'Level I')) )
+  } else {
     filter(x, !( !!bacteriaTypeRMK1  %in% c('Level II', 'Level I')) )
-  
+  }
+  #dplyr:: select(x, FDT_DATE_TIME2, !!bacteriaType1, !!bacteriaTypeRMK1) %>% # Just get relavent columns,
 }  
 
 #citmonOutOfBacteria(x, ENTEROCOCCI, RMK_31649) ### Note the non quoted variables, makes a big difference 
