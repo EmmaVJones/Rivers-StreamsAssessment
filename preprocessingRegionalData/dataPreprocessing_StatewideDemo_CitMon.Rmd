@@ -513,10 +513,10 @@ reservoirStationsWQS_fixed <- mutate(problem, OBJECTID = ifelse(FDT_STA_ID == '4
   st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
            remove = F, # don't remove these lat/lon cols from df
            crs = 4326) %>%# add coordinate reference system, needs to be geographic for now bc entering lat/lng,
-bind_rows(reservoirStationsWQS)
+  bind_rows(reservoirStationsWQS)
 
 ## make sure we didnt lose anyone
-nrow(problem) == nrow(reservoirStationsWQS) + length(notInReservoirWQS)
+nrow(reservoirStations) == nrow(reservoirStationsWQS) + length(notInReservoirWQS)
 
 
 # Run all stations that didn't connect to lake WQS polygon through streams snapping tool
@@ -564,17 +564,18 @@ Lastly, we need to combine the lake and stream stations into a single dataframe.
 ```{r combine WQS, echo=F}
 # Reorder columns in reservoirStationsWQS to match RegionalResults to allow row binding
 reservoirStationsWQS <- mutate(reservoirStationsWQS_fixed, Point.Unique.Identifier=NA, 
-                               Buffer.Distance=NA, StreamType=NA ) %>%
+                               Buffer.Distance=NA, StreamType=NA )
+
+reservoirStationsWQS1 <- reservoirStationsWQS %>%  as.data.frame() %>%
   dplyr::select(rowname, FDT_STA_ID:COMMENTS, Point.Unique.Identifier, Buffer.Distance, 
          OBJECTID:FCode, BASIN, WQS_COMMEN, WATER_NAME, SEC, CLASS, 
          SPSTDS, SECTION_DE, Basin_Code, PWS, Trout, Edit_Date, StreamType, 
-         Tier_III, Backlog, Shape_Leng)%>%
-  select(-`Number of Station Sampling Events`) %>%
-  st_set_geometry(NULL)
+         Tier_III, Backlog, Shape_Leng) %>%
+  select(-`Number of Station Sampling Events`)
 
 almostReady <- select(RegionalResults,-c( Number.of.Station.Sampling.Events, RorL  ))
 
-RegionalResultsCombined <- rbind(almostReady, reservoirStationsWQS)
+RegionalResultsCombined <- rbind(almostReady, reservoirStationsWQS1)
 #View(RegionalResultsCombined)
 rm(almostReady);rm(Regional_Sites_AU_basin);rm(regionalOutput);rm(RegionalResultsNoWQS);rm(reservoirStationsWQS_fixed);rm(riverineStationsWQS);rm(reservoirStationsWQS);rm(RegionalResults)
 ```
@@ -675,9 +676,17 @@ Now bring in nonagency and start by fixing raw data before smashing in non agenc
 
 ```{r nonagency}
 
-template <- read_csv('processedStationData/final2020data/RegionalResultsRiverine_BRROFINAL.csv') %>% 
+templateR <- read_csv('processedStationData/final2020data/RegionalResultsRiverine_BRROFINAL.csv') 
+templateL <- read_csv('processedStationData/final2020data/RegionalResultsLake_BRROFINAL.csv')
+templateL$STA_CBP_NAME <- as.character(templateL$STA_CBP_NAME)
+templateL$GNIS_ID <- as.character(templateL$GNIS_ID)
+
+
+
+template <- bind_rows(templateR, templateL) %>%
   mutate(rowname = NA) %>% # keep column for now
   select(rowname, everything())
+rm(templateL);rm(templateR)
 
 
 ## Bring in non Agency stations
@@ -729,8 +738,8 @@ nonARaw3 <- filter(nonARaw2, rowname %in% unique(nonA$rowname)[!is.na(unique(non
 
 # Now overwrite the names James gave raw data to match Mary/Paula call so i can find them in the app 
 nonARawFinal <- left_join(nonARaw3, 
-                     select(nonA, rowname, FDT_STA_ID, STA_DESC, Latitude, Longitude), by='rowname') %>%
-  mutate(FDT_STA_ID = FDT_STA_ID.y, STA_DESC = STA_DESC.y, Latitude = Latitude.y, Longitude = Longitude.y) %>% # keep what mary/paula called
+                     select(nonA, rowname, FDT_STA_ID, STA_DESC, Latitude, Longitude, VAHU6), by='rowname') %>%
+  mutate(FDT_STA_ID = FDT_STA_ID.y, STA_DESC = STA_DESC.y, Latitude = Latitude.y, Longitude = Longitude.y, Huc6_Vahu6 = VAHU6) %>% # keep what mary/paula called
   select(-c(FDT_STA_ID.x, STA_DESC.x, Latitude.x, Longitude.x, FDT_STA_ID.y, STA_DESC.y, Latitude.y, Longitude.y)) %>%
   select(names(nonARaw3)) # reorder columns to original format
 
@@ -766,6 +775,11 @@ write.csv(nonARawFinalForComments, 'data/NonAgencyOrganizedDataBRRO.csv', row.na
 conventionals3 <- bind_rows(conventionals2, nonARawFinal1)
 
 
+# keep only 1 record from each station, datetime combination since James included same data in two original datasets
+#conventionals4 <- distinct(conventionals3, FDT_STA_ID, FDT_DATE_TIME2, FDT_DEPTH, .keep_all = T)
+
+
+#nrow(conventionals3)-nrow(conventionals4) # so lost 454 duplicated rows 
 
 rm(nonARaw); rm(nonARaw1); rm(nonARaw2);rm(nonARaw3); rm(nonARawFinal1); rm(nonADetailscit); rm(nonA1); rm(nonACounts); rm(citCounts)
 
@@ -779,6 +793,58 @@ write.csv(conventionals3, 'data/conventionals_final2020_citmonNonAgency.csv', ro
 ```
 
 
+**UPDATE 6/19/2019** James identified that TP and ECOLI can be moved to appropriate columns. Necessary for lake app more than streams because of the volume of messed up data.
+
+```{r TP ECOLI conventionals fix}
+conventionals3 <- read_csv('data/conventionals_final2020_citmonNonAgency.csv')
+
+conventionals4 <- mutate(conventionals3, 
+                         `PHOSPHORUS_mg/L` = case_when(STA_LV3_CODE %in% c("CMON","NONA") ~ `PHOSPHORUS_TOTAL_00665_mg/L`,
+                                                       TRUE ~ `PHOSPHORUS_mg/L`), # alternative keep original
+                         `RMK_PHOSPHORUS` = case_when(STA_LV3_CODE %in% c("CMON","NONA") ~ `RMK_00665`,
+                                                      TRUE ~ `RMK_PHOSPHORUS`), # alternative keep original
+                         `ECOLI_CFU/100mL` = case_when(STA_LV3_CODE %in% c("CMON","NONA") ~ `E._COLI_31648_NO/100mL`,
+                                                       TRUE ~ `ECOLI_CFU/100mL`), # alternative keep original
+                         `ECOLI_RMK` = case_when(STA_LV3_CODE %in% c("CMON","NONA") ~ `RMK_31648`,
+                                                 TRUE ~ `ECOLI_RMK`), # alternative keep original
+                         ) %>%
+    # and now take those data points away so they arent double counted in pooling efforts
+  mutate(`PHOSPHORUS_TOTAL_00665_mg/L` = ifelse(STA_LV3_CODE %in% c("CMON","NONA"), NA,`PHOSPHORUS_TOTAL_00665_mg/L`),
+         `RMK_00665` = ifelse(STA_LV3_CODE %in% c("CMON","NONA"), NA,`RMK_00665`),
+         `E._COLI_31648_NO/100mL` = ifelse(STA_LV3_CODE %in% c("CMON","NONA"), NA, `E._COLI_31648_NO/100mL`),
+         `RMK_31648` = ifelse(STA_LV3_CODE %in% c("CMON","NONA"), NA,`RMK_31648`))
+  
+write.csv(conventionals4, 'data/conventionals_final2020_citmonNonAgency_TP_ECOLIupdates.csv', row.names = F)
+#saveRDS(conventionals4, 'data/conventionals_final2020_citmonNonAgency_TP_ECOLIupdates.RDS')
+
+```
+
+
+
+
+Now time to combine James' citmon stations that Mary and Paula wanted collapsed since we have used their rowname field to get raw data from conventionals.
+
+```{r collapseStations}
+# number of stations that need to be dealt with
+nrow(dupes <- RegionalResultsCombined %>% group_by(FDT_STA_ID) %>% mutate(nrows=n()) %>% dplyr::select(nrows,everything()) %>%filter(nrows>1))/2
+
+unique(dupes$FDT_STA_ID)
+
+# Go through each pair and make sure no major differences
+View(filter(dupes, FDT_STA_ID == '4AROA-B08-FC')) # cool, choose 410, not 411
+View(filter(dupes, FDT_STA_ID == '4AROA-R07-FC')) # cool 1073 bc not betty's creek, not 1055
+View(filter(dupes, FDT_STA_ID == '4AROA-R09-FC'))# cool 1074 bc not betty's creek, not 1056
+View(filter(dupes, FDT_STA_ID == 'LVLAROA140.66'))# cool 35, not 36
+View(filter(dupes, FDT_STA_ID == 'LVLAROA157.95'))# cool 55, not 56
+
+RegionalResultsCombined1 <- filter(RegionalResultsCombined, !(rowname %in% c(411, 1055, 1056, 36, 56)))
+
+rm(dupes)
+
+```
+
+
+
 
 
 
@@ -786,11 +852,11 @@ write.csv(conventionals3, 'data/conventionals_final2020_citmonNonAgency.csv', ro
 A few more data processing steps to smash citmon into stations table 2.0 for app.
 
 ```{r last bit}
-template <- read_csv('processedStationData/final2020data/RegionalResultsRiverine_BRROFINAL.csv') %>% 
-  mutate(rowname = NA, VAHU6 = Huc6_Vahu6) %>% # keep column for now
-  select(rowname, everything())
+#template <- read_csv('processedStationData/final2020data/RegionalResultsRiverine_BRROFINAL.csv') %>% 
+#  mutate(rowname = NA, VAHU6 = Huc6_Vahu6) %>% # keep column for now
+#  select(rowname, everything())
 
-RegionalResultsCombined2 <- mutate(RegionalResultsCombined, VAHU6=VAHU6.x) %>%
+RegionalResultsCombined2 <- mutate(RegionalResultsCombined1, VAHU6=VAHU6.x) %>%
   dplyr::select( names(template))
 
 # ADD TO final stations table 
@@ -811,25 +877,39 @@ RegionalResults4 <-  rbind(RegionalResults3, nonA)
 rm(nonA); rm(template); rm(citMonAU1);rm(RegionalResults3);rm(RegionalResultsCombined);rm(RegionalResultsCombined2);rm(cit)
 
 
+
+# Last minute fixes of any lingering VAC's, change to VAW
+View(dplyr::filter(RegionalResults4, grepl("VAC",ID305B_1)))
+RegionalResults5 <- mutate(RegionalResults4, ID305B_1 = ifelse(grepl("VAC",ID305B_1) == T, gsub("VAC",'VAW',ID305B_1),ID305B_1 ))
+View(dplyr::filter(RegionalResults5, grepl("VAC",ID305B_1)))
+
+# Last minute fixes, remove any duplicated stations
+dupes <- filter(RegionalResults5, duplicated(FDT_STA_ID))
+#RegionalResults6 <- filter(RegionalResults5, FDT_STA_ID %in% dupes$FDT_STA_ID)
+
+# fucking same duplicates
+
+dupes1 <- filter(template, duplicated(FDT_STA_ID))
+template1 <- filter(template, FDT_STA_ID %in% dupes1$FDT_STA_ID)
+write.csv(template1,'help.csv',row.names = F)
+
+
 #Split into lake or riverine
-
-
-
-RegionalResults4 $RorL <- NA
-for(i in 1: nrow(RegionalResults4)){
-  RegionalResults4 $RorL[i] <- substr(strsplit(as.character(RegionalResults4 $ID305B_1[i]), '-')[[1]][2] ,4,4)
+RegionalResults5 $RorL <- NA
+for(i in 1: nrow(RegionalResults5)){
+  RegionalResults5 $RorL[i] <- substr(strsplit(as.character(RegionalResults5 $ID305B_1[i]), '-')[[1]][2] ,4,4)
   
 }
 
 # Make the rest riverine
-lakeStations <- filter(RegionalResults4, RorL == 'L') %>%
+lakeStations <- filter(RegionalResults5, RorL == 'L') %>%
   select(-RorL)
 
-riverStations <- filter(RegionalResults4, RorL == 'R') %>%
+riverStations <- filter(RegionalResults5, RorL == 'R') %>%
   select(-c(RorL))
 
 # Make sure we have everyone
-nrow(lakeStations) + nrow(riverStations) == nrow(RegionalResults4)
+nrow(lakeStations) + nrow(riverStations) == nrow(RegionalResults5)
 
 
 regionCode <- 'BRRO'
@@ -838,7 +918,7 @@ write.csv(select(riverStations,-rowname), paste('processedStationData/final2020d
 
 write.csv(select(lakeStations,-rowname), paste('processedStationData/final2020data/RegionalResultsLake_',
                                   regionCode,'CitMonNonAgencyFINAL.csv',sep=''), row.names=FALSE)
-saveRDS(RegionalResults4,'processedStationData/final2020data/RegionalResults4.RDS')
+saveRDS(RegionalResults5,'processedStationData/final2020data/RegionalResults5.RDS')
 
 
 ```
@@ -906,167 +986,6 @@ saveRDS(conventionals_sf, 'data/conventionals_sf_final2020_citmonNonAgency.RDS')
 
 
 
-
-
-
-
-
-
-This next chunk walks users through saving all the results. The results are saved to a default folder created in this directory called processedStationData. You can find the datasets you need to manually update before entering into the app there. Again, AU and WQS information as formatted by the above code is required for all sites you wish to analyze within the assessment apps. Failure to upload stations in the correct format ensures the app with either break or fail to analyze your data. It is advised that you fix the stations in the RegionalResultsCombined_REGIONCODE.csv. Other spreadsheets and shapefiles of stations missing information are provided for you to use in GIS to make corrections in the RegionalResultsComnined.csv.
-
-```{r saveResults, echo=FALSE}
-# This table has all unique stations within the selected region, regardless of AU or WQS connections.
-write.csv(RegionalResultsCombined, paste('processedStationData/final2020data/RegionalResultsCombined_',
-                                         regionCode,'.csv',sep=''), row.names=FALSE)
-
-# This table and shapefile highlights the stations that need AU information prior to use in assessment apps
-RegionalResultsCombined_NoAU <- filter(RegionalResultsCombined, is.na(ID305B_1))
-write.csv(RegionalResultsCombined_NoAU,
-          paste('processedStationData/final2020data/RegionalResultsCombined_NoAU_',      
-                regionCode,'.csv',sep=''), row.names=FALSE)
-#shapefile version of same data
-RegionalResultsCombined_NoAU_sf <- RegionalResultsCombined_NoAU %>%
-  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
-           remove = F, # don't remove these lat/lon cols from df
-           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
-st_write(RegionalResultsCombined_NoAU_sf,
-         paste('processedStationData/final2020data/RegionalResultsCombined_NoAU_',
-               regionCode,'.shp',sep=''))
-
-# This table and shapefile highlights the stations that need WQS information prior to use in assessment apps
-RegionalResultsCombined_NoWQS <- filter(RegionalResultsCombined, is.na(OBJECTID))
-write.csv(RegionalResultsCombined_NoWQS,
-          paste('processedStationData/final2020data/RegionalResultsCombined_NoWQS_',
-                regionCode,'.csv',sep=''), row.names=FALSE)
-#shapefile version of same data
-RegionalResultsCombined_NoWQS_sf <- RegionalResultsCombined_NoWQS %>%
-  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
-           remove = F, # don't remove these lat/lon cols from df
-           crs = 4326) # add coordinate reference system, needs to be geographic for now bc entering lat/lng,
-st_write(RegionalResultsCombined_NoWQS_sf,
-         paste('processedStationData/final2020data/RegionalResultsCombined_NoWQS_',
-               regionCode,'.shp',sep=''))
-
-
-# This table has all Estuary sites for your reference. None of the available assessment apps currently handle estuarine assessments
-write.csv(conventionals_D_Region_Estuary,
-          paste('processedStationData/final2020data/EstuarineSites_',
-                regionCode,'.csv',sep=''), row.names=FALSE)
-```
-
-
-## Split out riverine vs lake stations for assessment apps
-
-Once you fix any stations that are missing AU or WQS information, you can read the entire dataset back to this script and have the program split the station tables into stations that will be analyzed by the lake assessment app and those that will be assessed by the rivers and streams assessment app. **All stations that need to be assessed by the lake assessment app require a 'L' in either STATION_TYPE_1, STATION_TYPE_2, or STATION_TYPE_3 fields.** Packages and necessary datasets are reloaded in case you are not completing this step in the same session as the previous AU/WQS assignment session. 
-
-**Minimal user input: if the file or file location you want to upload differs from the example given, you will need to update it to work with your configuration.**
-
-If you are starting from a new session in R, you need to remind it what region you are working with. Use the same region code as specified above.
-
-```{r remindR}
-regionCode <- ''
-#regionCode <- 'BRRO'
-```
-
-
-```{r splitRiversAndLakes, echo=F}
-library(tidyverse)
-
-# This is the station table you have edited including all riverine and lake stations with all necessary AU and WQS information fixed for your region.
-#RegionalResultsCombinedAll <- read_csv('processedStationData/final2020data/RegionalResultsCombined_final.csv')
-RegionalResultsCombinedAll <-read_csv(' XXXX .csv')
-
-# Quick duplicate check
-dupes <- RegionalResultsCombinedAll$FDT_STA_ID [duplicated(RegionalResultsCombinedAll$FDT_STA_ID )] 
-
-
-# Find all stations that have lake designations
-RegionalResultsCombinedAll3 <- mutate(RegionalResultsCombinedAll2, 
-                                      lakeStation = ifelse(grepl("L",STATION_TYPE_1) |
-                                                             grepl("L",STATION_TYPE_2) |
-                                                             grepl("L",STATION_TYPE_3), 'lake','river'))
-
-lakeStations <- filter(RegionalResultsCombinedAll3, lakeStation=='lake') %>%
-  select(-lakeStation)
-
-# Make the rest riverine
-riverStations <- filter(RegionalResultsCombinedAll3, lakeStation != 'lake') %>%
-  select(-lakeStation)
-
-# Make sure we didnt lose anyone
-nrow(riverStations) + nrow(lakeStations) == nrow(RegionalResultsCombinedAll3)
-
-# Save both for app use
-write.csv(lakeStations, paste('processedStationData/final2020data/RegionalResultsLake_',
-                                         assessmentLayerSelection,'FINAL.csv',sep=''), row.names=FALSE)
-write.csv(riverStations, paste('processedStationData/final2020data/RegionalResultsRiverine_',
-                                         assessmentLayerSelection,'FINAL.csv',sep=''), row.names=FALSE)
-
-
-```
-
-Before we can run the riverine app, we need to attach correct Ecoregion information. Benthics data needs ecoregion attached to unique sites to determine SCI to use.
-
-```{r benthics ecoregion join}
-
-# Bring back in original Conventionals data
-conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
-  filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
- # rename changed column names since app was built
-  rename("FDT_TEMP_CELCIUS"  ="TEMPERATURE_00010_DEGREES CENTIGRADE",
-         "FDT_TEMP_CELCIUS_RMK" = "FDT_TEMP_CELCIUS_RMK",  
-         "FDT_FIELD_PH" = "pH_00400_STD_UNITS" ,          
-         "FDT_FIELD_PH_RMK"  ="FDT_FIELD_PH_RMK", 
-         "DO" =  "DO_mg/L",       
-         "DO_RMK"  ="DO_RMK",    
-         "FDT_SPECIFIC_CONDUCTANCE"="SPECIFIC_CONDUCTANCE_00095_UMHOS/CM @ 25C",    
-         "FDT_SPECIFIC_CONDUCTANCE_RMK" ="FDT_SPECIFIC_CONDUCTANCE_RMK" ,
-         "FDT_SALINITY" = "SALINITY_00480_PPT" ,            
-         "FDT_SALINITY_RMK"  ="FDT_SALINITY_RMK",  
-         "NITROGEN" = "NITROGEN_mg/L" ,                    
-         "AMMONIA" ="AMMONIA_mg/L",
-         "PHOSPHORUS" =  "PHOSPHORUS_mg/L",
-         "FECAL_COLI" = "FECAL_COLIFORM_31616_NO/100mL" ,
-         "E.COLI" = "ECOLI_CFU/100mL",                       
-         "ENTEROCOCCI" =  "ENTEROCOCCI_31649_NO/100mL",
-         "CHLOROPHYLL" ="CHLOROPHYLL_32211_ug/L",                
-         "SSC" ="SSC-TOTAL_00530_mg/L" , 
-         "NITRATE" ="NITRATE_mg/L", 
-         "CHLORIDE" ="CHLORIDE_mg/L",
-         "SULFATE_TOTAL" ="SULFATE_TOTAL_00945_mg/L",              
-         "SULFATE_DISS" ="SULFATE_DISSOLVED_00946_mg/L")
-conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M")
-
-
-# Bring in Level 3 ecoregion
-library(sf)
-ecoregion <- st_read('GIS/VA_level3ecoregion.shp') %>%
-  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
-
-# Bring back in assessment regions information one last time because conventionals doesn't have Basin in 2020
-assessmentLayer <- st_read('GIS/AssessmentRegions_VA84_basins.shp') %>%
-  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
-
-
-# Make conventionals spatial object
-conventionals_sf <- conventionals %>%
-  distinct(FDT_STA_ID, .keep_all = T) %>%
-  st_as_sf( coords = c("Longitude", "Latitude"), 
-            remove = F, # don't remove these lat/lon cols from df
-            crs = 4326)  # add projection, needs to be geographic bc entering lat/lng
-
-# make sure everything will work
-identical(st_crs(conventionals_sf),st_crs(ecoregion))
-identical(st_crs(conventionals_sf),st_crs(assessmentLayer))
-
-# first get Basin information for conventionals, then Ecoregion
-conventionals_sf <-  st_join(conventionals_sf, 
-                          select(assessmentLayer, Basin), join = st_intersects) %>%
-  st_join(select(ecoregion, US_L3CODE, US_L3NAME), join = st_intersects) %>%
-  st_set_geometry(NULL) # take away spatial component so it can go into csv nicely
-
-saveRDS(conventionals_sf, 'data/conventionals_sf_final2020.RDS')
-```
 
 
 Contact Emma Jones (emma.jones@deq.virginia.gov) if you have any questions about this script.
