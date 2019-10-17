@@ -1,0 +1,380 @@
+---
+title: "How to run automated assessment- Riverine"
+author: "Emma Jones"
+date: "February 11, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sf)
+library(readxl)
+library(FSA)
+library(lubridate)
+library(magrittr)
+
+# Bring in Assessment functions from app
+source('global.R')
+```
+
+This document walks users through runing the automated assessement for their region. Prior to this point, the user needs to have completed the necessary prerequisites. This dataset is a companion to the rivers and streams assessment application and is **NOT** final. The results cited in this table are identical to the app calculations and are meant for assessor review, QA, editing prior to finalizing.
+
+# Prerequisites
+The user will have to have all conventionals data, water column metals, and sediment metals organized by Roger for the window. Additionally, the EDAS data needs to be exported and available for use. Last cycle's finalized regional assessment layer (shapefile with AUs) are the spatial component needed. Lastly, the assessor must have the stations 2.0 table for the upcoming cycle completely filled out in order to run the assessment. 
+
+```{r datasources}
+# Regional AU layer from last cycle, change for each region
+
+## PRO ##
+#regionalAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_riverinePRO.shp') %>%
+#  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+## TRO ##
+#regionalAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_riverineTRO.shp') %>%
+#  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+##BRRO no citmon
+regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineBRRO.shp') %>%
+  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+# SWRO
+#regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineSWRO.shp') %>%
+#  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+
+
+# Roger's conventionals data pull
+conventionals <- read_csv('data/final2020data/conventionals_final2020_citmonNonAgency.csv') %>%
+#conventionals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-CONVENTIONALS_20190305.csv') %>%
+  filter(!is.na(Latitude)|!is.na(Longitude)) %>% # remove sites without coordinates
+  rename("FDT_TEMP_CELCIUS"  ="TEMPERATURE_00010_DEGREES CENTIGRADE",
+         "FDT_TEMP_CELCIUS_RMK" = "FDT_TEMP_CELCIUS_RMK",  
+         "FDT_FIELD_PH" = "pH_00400_STD_UNITS" ,          
+         "FDT_FIELD_PH_RMK"  ="FDT_FIELD_PH_RMK", 
+         "DO" =  "DO_mg/L",       
+         "DO_RMK"  ="DO_RMK",    
+         "FDT_SPECIFIC_CONDUCTANCE"="SPECIFIC_CONDUCTANCE_00095_UMHOS/CM @ 25C",    
+         "FDT_SPECIFIC_CONDUCTANCE_RMK" ="FDT_SPECIFIC_CONDUCTANCE_RMK" ,
+         "FDT_SALINITY" = "SALINITY_00480_PPT" ,            
+         "FDT_SALINITY_RMK"  ="FDT_SALINITY_RMK",  
+         "NITROGEN" = "NITROGEN_mg/L" ,                    
+         "AMMONIA" ="AMMONIA_mg/L",
+         "PHOSPHORUS" =  "PHOSPHORUS_mg/L",
+         "FECAL_COLI" = "FECAL_COLIFORM_31616_NO/100mL" ,
+         "E.COLI" = "ECOLI_CFU/100mL",                       
+         "ENTEROCOCCI" =  "ENTEROCOCCI_31649_NO/100mL",
+         "CHLOROPHYLL" ="CHLOROPHYLL_32211_ug/L",                
+         "SSC" ="SSC-TOTAL_00530_mg/L" , 
+         "NITRATE" ="NITRATE_mg/L", 
+         "CHLORIDE" ="CHLORIDE_mg/L",
+         "SULFATE_TOTAL" ="SULFATE_TOTAL_00945_mg/L",              
+         "SULFATE_DISS" ="SULFATE_DISSOLVED_00946_mg/L")
+###### CHANGED 5/9/19
+#conventionals$FDT_DATE_TIME2 <- as.POSIXct(conventionals$FDT_DATE_TIME, format="%m/%d/%Y %H:%M") # comment out if using with citmon data
+
+
+# Roger's metals data pull
+WCmetals <- read_csv('data/final2020data/CEDSWQM_2020_IR_DATA-WATER_METALS_VALUES_20190207_EVJ.csv')
+Smetals <- read_excel('data/final2020data/CEDSWQM_2020_IR_DATA-CEDSWQM_SEDIMENT_20190213.xlsx') %>%
+  dplyr::select(FDT_STA_ID:ZINC...70, COMMENT...89)
+names(Smetals) <- gsub( "[..].*", "", names(Smetals)) # remove anything after .. in name
+
+# Bring in latest EDAS VSCI and (combined) VCPMI queries
+VSCI <- read_excel('data/Family Metrics VSCI Calculation.xlsx')%>%
+  filter(RepNum == 1 & Target_Count == 110 &
+           CollDate >= assessmentPeriod[1] )
+VCPMI <- read_excel('data/Family Metrics - CPMI Combined.xlsx')%>%
+  filter(RepNum == 1 & Target_Count == 110 &
+           CollDate >= assessmentPeriod[1] )
+
+stationTable <- 
+  # PRO
+ # read_csv('processedStationData/RegionalResultsRiverine_PROFINAL.csv') %>%
+  
+  
+  ## TRO
+  #read_csv('processedStationData/RegionalResultsRiverine_TROFINAL.csv') %>%
+  
+   # BRRO WITH citmon
+  read_csv('processedStationData/RegionalResultsRiverine_BRROCitMonNonAgencyFINAL.csv') %>%
+ 
+  
+  ## BRRO no citmon
+  #read_csv('processedStationData/RegionalResultsRiverine_BRROFINAL.csv') %>%
+  
+  # SWRO
+  #read_csv('processedStationData/RegionalResultsRiverine_SWRO_updated.csv') %>%
+  
+  
+  # fix periods in column names from excel
+  as_tibble() %>%
+  dplyr::rename(`Point Unique Identifier` ="Point.Unique.Identifier", `Buffer Distance` = "Buffer.Distance") %>%
+  mutate(VAHU6 = ifelse(is.na(VAHU6), Huc6_Vahu6, VAHU6)) 
+
+monStationTemplate <- read_excel('data/tbl_ir_mon_stations_template.xlsx') # from X:\2018_Assessment\StationsDatabase\VRO
+
+
+
+citMon <- read_csv('data/CitMonOrganizedDataBRRO.csv')
+
+nonA <- read_csv('data/NonAgencyOrganizedDataBRRO.csv')
+
+
+```
+
+
+# Data manipulation
+
+Now that we have all the data we need to run the assessment, we need to reorganize it to run smoothly through the app assessment functions. 
+
+
+If you have any class II waters, run this first. It basically simplifies the potentially duplicated row with Class II waters and ches bay designation.
+
+
+
+
+```{r}
+stationTable <- mutate(stationTable, CLASS_BASIN = paste(CLASS,substr(stationTable$BASIN, 1,1), sep="_")) %>%
+  mutate(CLASS_BASIN = ifelse(CLASS_BASIN == 'II_7', "II_7", CLASS))
+
+
+```
+
+
+```{r class II, eval=FALSE}
+
+#unique(stationTable$CLASS)
+```
+
+
+
+```{r class II pause, eval=FALSE}
+# Fix for Class II Tidal Waters in Chesapeake (bc complicated DO/temp/etc standard)
+#stationTable1 <- dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS, 
+#                                                           SPSTDS, ID305B_1, ID305B_2, ID305B_3,
+#                                                           STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin) %>%
+#  left_join(WQSvalues, by = 'CLASS') %>%
+#  mutate(`Dissolved Oxygen Min (mg/L)` = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', #NA,`Dissolved Oxygen Min (mg/L)`),
+#         `Dissolved Oxygen Daily Avg (mg/L)`  = ifelse(Basin == "Ches. Bay and Small Coastal Basin" & CLASS == 'II', NA, `Dissolved Oxygen Daily Avg (mg/L)`)) %>%
+  #mutate(`Dissolved Oxygen Min (mg/L)` = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' ~ NA,
+  #       `Dissolved Oxygen Daily Avg (mg/L)`  = case_when(Basin == "Ches. Bay and Small Coastal Basin" && CLASS == 'II' #~ NA)) %>%
+#  distinct(FDT_STA_ID, .keep_all = T)
+
+#conventionals_HUC<- left_join(conventionals, stationTable1, by = "FDT_STA_ID")
+
+```
+
+
+If no class II waters then you can join directly by class
+
+
+```{r no class II}
+
+conventionals_HUC<- left_join(conventionals, dplyr::select(stationTable, FDT_STA_ID, SEC, CLASS_BASIN, CLASS, 
+                                                           SPSTDS, ID305B_1, ID305B_2, ID305B_3,
+                                                           STATION_TYPE_1, STATION_TYPE_2, STATION_TYPE_3, Basin), by='FDT_STA_ID') %>%
+  left_join(WQSvalues, by = 'CLASS_BASIN') %>%
+  dplyr::select(-c(CLASS.y,CLASS_BASIN)) %>%
+  rename('CLASS' = 'CLASS.x')
+
+
+
+```
+
+
+# Automated assessment
+
+This loop runs the regional assessment for conventionals, metals, and macroinvertebrate data for the input regional station table. The run time should be less than two minutes. Completely functionalizing the processes with purrr would speed up processing.
+
+```{r}
+stationTableResults <- monStationTemplate %>%
+      mutate_all(as.character)
+# time it:
+startTime <- Sys.time()
+
+# loop over all sites, not super efficient but get the job done for now
+for(i in 1:nrow(stationTable)){
+  print(paste('Assessing station', i, 'of', nrow(stationTable), sep=' '))
+
+  # pull one station data
+  stationData <- filter(conventionals_HUC, FDT_STA_ID %in% stationTable$FDT_STA_ID[i]) 
+  
+  # separate objects bc some data smashing issues  
+  #StationTablePrelimStuff <- StationTableStartingData(stationData)
+  
+  # Fix forced NA's from character to real NA
+  #z <- StationTablePrelimStuff %>%
+  #    mutate_all(as.character)
+  #z[z =="NA"] <- NA
+  # manipulate ID305B_1 to get DCR11 watershed ID
+  #watID <-  substr(strsplit(as.character(z$ID305B_1), '-')[[1]][2] , 1, 3)
+  #z$WATERSHED_ID <- watID 
+  # full station table
+  chronicAmmonia <- chronicNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
+                     dplyr::select(ChronicAmmonia_VIO)
+  
+  #citmon data being weird, have to run in own loop
+  # Only do this if citmon or NonAgency data
+  if(all(stationData$STA_LV3_CODE %in% c("CMON", "NONA", "NONA "))){
+      # for conventionals data
+      a <- 12:117
+      n <- length(a)
+      
+      holder <- NA
+      
+      for(k in a[seq(1,n,2)]){ 
+        x <- stationData[,c(k, k+1)]
+        holder[k] <- countSamplesAtLevels(x)
+      }
+      
+      citMonStationData <- filter(citMon, FDT_STA_ID %in% stationTable$FDT_STA_ID[i])
+      citmonExtras <- colSums(!is.na(citMonStationData[,138:165]))[!(colSums(!is.na(citMonStationData[,138:165])) ==0 )]
+      citmonExtras2 <- as.data.frame(citmonExtras) %>% rownames_to_column() %>% mutate(together = paste(rowname, ":",citmonExtras))
+      
+      nonAStationData <- filter(nonA, FDT_STA_ID %in% stationTable$FDT_STA_ID[i])
+      nonAExtras <- colSums(!is.na(nonAStationData[,137:164]))[!(colSums(!is.na(nonAStationData[,137:164])) ==0 )]
+      nonAExtras2 <- as.data.frame(nonAExtras) %>% rownames_to_column() %>% mutate(together = paste(rowname, ":",nonAExtras))
+      
+      citmonAllDataByLevel <- paste(paste0(holder[!is.na(holder)], collapse = '; '),citmonExtras2$together,';', nonAExtras2$together) 
+  } else {
+      citmonAllDataByLevel <- NULL
+  }
+
+
+  
+  
+  results <- cbind(StationTableStartingData(stationData),
+                 tempExceedances(stationData),
+                 DOExceedances_Min(stationData),
+                 pHExceedances(stationData),
+                 bacteriaExceedances_OLD(bacteria_Assessment_OLD(citmonOutOfBacteria(stationData, E.COLI, ECOLI_RMK), 'E.COLI', 126, 235),'E.COLI') %>%
+                   dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
+                 # No citmon way
+                 #bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'E.COLI', 126, 235),'E.COLI') %>% 
+                 #   dplyr::rename('ECOLI_VIO' = 'E.COLI_VIO', 'ECOLI_SAMP'='E.COLI_SAMP', 'ECOLI_STAT'='E.COLI_STAT'),
+                 # new bacteria exceedance stats
+                 bacteriaExceedances_NEW(citmonOutOfBacteria(stationData, E.COLI, ECOLI_RMK),'E.COLI', 10, 410, 126), #bacteriaExceedances_NEW(stationData,'E.COLI', 10, 410, 126),
+                 bacteriaExceedances_OLD(bacteria_Assessment_OLD(citmonOutOfBacteria(stationData, ENTEROCOCCI, RMK_31649), 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>%
+                   dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
+                 # No citmon way  
+                 #bacteriaExceedances_OLD(bacteria_Assessment_OLD(stationData, 'ENTEROCOCCI', 35, 104),'ENTEROCOCCI') %>% 
+                 #   dplyr::rename('ENTER_VIO' = 'ENTEROCOCCI_VIO', 'ENTER_SAMP'='ENTEROCOCCI_SAMP', 'ENTER_STAT'='ENTEROCOCCI_STAT'),
+                 #new bacteria exceedance stats
+                 bacteriaExceedances_NEW(citmonOutOfBacteria(stationData, ENTEROCOCCI, RMK_31649),'ENTEROCOCCI',10, 35, 104),#bacteriaExceedances_NEW(stationData,'ENTEROCOCCI',10, 35, 104),
+                 metalsExceedances(filter(WCmetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
+                                     dplyr::select(`ANTIMONY HUMAN HEALTH PWS`:`ZINC ALL OTHER SURFACE WATERS`), 'WAT_MET'),
+                 acuteNH3exceedance(stationData) %>% # ammonia function being a pain so forcing it in
+                   dplyr::select(AcuteAmmonia_VIO, AcuteAmmonia_STAT) %>%
+                   dplyr::rename('WAT_TOX_VIO' ='AcuteAmmonia_VIO','WAT_TOX_STAT' = 'AcuteAmmonia_STAT'),
+                 metalsExceedances(filter(Smetals, FDT_STA_ID %in% stationData$FDT_STA_ID) %>% 
+                                     dplyr::select(ARSENIC:ZINC), 'SED_MET') %>%
+                   dplyr::select(-ends_with('exceedanceRate')),
+                 data.frame(SED_TOX_VIO='Not Analyzed by App', SED_TOX_STAT='Not Analyzed by App'),# Placeholder for sediment toxics
+                 data.frame(FISH_MET_VIO='Not Analyzed by App', FISH_MET_STAT='Not Analyzed by App'), # Placeholder for fish metals
+                 data.frame(FISH_TOX_VIO='Not Analyzed by App', FISH_TOX_STAT='Not Analyzed by App'),# Placeholder for fish toxics
+                 benthicAssessment(stationData,conventionals_sf,VSCI,VCPMI),
+                 countTP(citmonOutOfBacteria(stationData, PHOSPHORUS, RMK_PHOSPHORUS)),
+                 countchla(citmonOutOfBacteria(stationData, CHLOROPHYLL, RMK_32211)),
+                 # No citmon method
+                 #countTP(stationData),
+                 # countchla(stationData),
+                 # Chronic Ammonia printed in Comments
+                 data.frame(COMMENTS= paste('WAT_TOX fields indicate acute ammonia calculations. Chronic Ammonia Violations: ',chronicAmmonia[1,], ";",
+                                            citmonAllDataByLevel))) %>%
+                                            #collapseAllDataByLevel(stationData, 12:117)))) %>%
+                                            #citmonComment(stationData)))) %>%
+  dplyr::select(-ends_with('exceedanceRate'))
+
+  
+  # manipulate ID305B_1 to get DCR11 watershed ID
+  results$WATERSHED_ID <- substr(strsplit(as.character(results$ID305B_1), '-')[[1]][2] , 1, 3)
+  
+  
+  stationTableResults <- rbind(stationTableResults,results)
+}
+
+timeDiff = Sys.time()- startTime
+
+```
+It took `r timeDiff` to run ~ 80% of the regional assessment.
+
+
+Last thing, to help assessors speed up comment process and help identify where data that is not overviewed in app should be carried forward, attach last cycle's comments to the stations present in this cycle.
+
+```{r attach previous cycle comments}
+stationTableResultsWithComments <- left_join(stationTableResults, 
+                                             select(stationTable, STATION_ID, COMMENTS), by = 'STATION_ID') %>%
+  rename('COMMENTS' = 'COMMENTS.x','Last Cycle Comment' = 'COMMENTS.y')
+```
+
+
+
+Look at results.
+```{r look at results}
+datatable(stationTableResultsWithComments, extensions = 'Buttons', escape=F, rownames = F, editable = TRUE,
+              options= list(scrollX = TRUE, pageLength = nrow(stationTableResults),
+                            dom='Bt', buttons=list('copy',
+                                                    list(extend='csv',filename=paste('AssessmentResults_',
+                                                                                     paste(assessmentCycle,input$stationSelection, 
+                                                                                           collapse = "_"),Sys.Date(),sep='')),
+                                                    list(extend='excel',filename=paste('AssessmentResults_',
+                                                                                       paste(assessmentCycle,input$stationSelection, 
+                                                                                             collapse = "_"),Sys.Date(),sep=''))))) %>% 
+      # format cell background color based on hidden column
+      formatStyle(c('TEMP_SAMP','TEMP_VIO','TEMP_STAT'), 'TEMP_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('DO_SAMP','DO_VIO','DO_STAT'), 'DO_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('PH_SAMP','PH_VIO','PH_STAT'), 'PH_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('ECOLI_SAMP','ECOLI_VIO','ECOLI_STAT'), 'ECOLI_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('ENTER_SAMP','ENTER_VIO','ENTER_STAT'), 'ENTER_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('WAT_MET_VIO','WAT_MET_STAT'), 'WAT_MET_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('WAT_TOX_VIO','WAT_TOX_STAT'), 'WAT_TOX_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('SED_MET_VIO','SED_MET_STAT'), 'SED_MET_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) %>%
+      formatStyle(c('BENTHIC_STAT'), 'BENTHIC_STAT', backgroundColor = styleEqual(c('Review'), c('red'))) 
+```
+
+Save results.
+```{r saveResults}
+regionCode <- 'BRRO'#'SWRO'#'TRO'#'PRO'
+write.csv(stationTableResultsWithComments, paste("stationTableResults", regionCode,Sys.Date(),".csv",sep=''), row.names = FALSE, na="")
+```
+
+
+
+
+Optional section:
+Compare previous results to results just run with compareDF to highlight results differences
+
+```{r}
+oldBRROresults <- read.csv('stationTableResultsBRRO2019-05-21.csv',na.strings=c("NA","NaN", " ")) %>%
+  select(STATION_ID, TEMP_VIO:SED_MET_STAT, BENTHIC_STAT:NUT_CHLA_STAT)
+library(compareDF)
+
+
+comparisonTable <- compare_df(select(stationTableResultsWithComments,STATION_ID, TEMP_VIO:SED_MET_STAT, BENTHIC_STAT:NUT_CHLA_STAT),
+                              oldBRROresults, 'STATION_ID')
+
+print(comparisonTable$html_output) #easier output to read
+
+View(comparisonTable$change_count) # sum of changes
+
+comparisonTable$change_summary
+```
+
+
+```{r}
+
+joincol <- select(comparisonTable$comparison_df,STATION_ID) %>% rename('STATIONID'='STATION_ID')
+easierReading <- cbind(joincol, comparisonTable$comparison_table_diff) 
+```
+
+
+find places with different Temp violation counts:
+```{r}
+filter(easierReading, TEMP_VIO == '+')$STATIONID
+filter(easierReading, DO_VIO == '+')$STATIONID
+```
+
+

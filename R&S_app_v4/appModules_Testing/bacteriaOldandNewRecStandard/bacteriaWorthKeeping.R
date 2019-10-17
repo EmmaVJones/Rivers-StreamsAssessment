@@ -1,15 +1,13 @@
+source('testingDataset.R')
 
-
-library(tidyverse)
-library(readxl)
 
 # Tish's spreadsheet
-tish <- read_excel('exampleData/EcoliNewStandard/20172018_bacteria.xlsx', sheet = 'Cub Run') 
+tish <- read_excel('exampleData/20172018_bacteria.xlsx', sheet = 'Cub Run') 
 tish1 <- select(tish, ID, `Date Time`, Value)
 tish1$`Date Time` <- as.Date(tish1$`Date Time`,format = '%Y-%m-%d')
 
 
-tish <- saveRDS(tish1,'exampleData/EcoliNewStandard/tish1.RDS')
+
 
 
 ecoliExceedances_NewStd <- function(x, sampleRequirement){
