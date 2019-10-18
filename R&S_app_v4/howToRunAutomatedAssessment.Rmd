@@ -30,20 +30,19 @@ The user will have to have all conventionals data, water column metals, and sedi
 #regionalAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_riverinePRO.shp') %>%
 #  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
-
 ## TRO ##
 #regionalAUs <- st_read('GIS/draft2018_spatialData/va_2018_aus_riverineTRO.shp') %>%
 #  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 
 ##BRRO no citmon
-regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineBRRO.shp') %>%
-  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+#regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineBRRO.shp') %>%
+#  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 
 # SWRO
-#regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineSWRO.shp') %>%
-#  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
+regionalAUs <- st_read('C:/HardDriveBackup/R/GitHub/Rivers-StreamsAssessment/GIS/draft2018_spatialData/va_2018_aus_riverineSWRO.shp') %>%
+  st_transform( st_crs(4326)) # transform to WQS84 for spatial intersection
 
 
 # Roger's conventionals data pull
@@ -92,21 +91,21 @@ VCPMI <- read_excel('data/Family Metrics - CPMI Combined.xlsx')%>%
 
 stationTable <- 
   # PRO
- # read_csv('processedStationData/RegionalResultsRiverine_PROFINAL.csv') %>%
+  #read_csv('processedStationData/RegionalResultsRiverine_PROFINAL.csv') %>%
   
   
   ## TRO
   #read_csv('processedStationData/RegionalResultsRiverine_TROFINAL.csv') %>%
   
    # BRRO WITH citmon
-  read_csv('processedStationData/RegionalResultsRiverine_BRROCitMonNonAgencyFINAL.csv') %>%
+  #read_csv('processedStationData/RegionalResultsRiverine_BRROCitMonNonAgencyFINAL.csv') %>%
  
   
   ## BRRO no citmon
   #read_csv('processedStationData/RegionalResultsRiverine_BRROFINAL.csv') %>%
   
   # SWRO
-  #read_csv('processedStationData/RegionalResultsRiverine_SWRO_updated.csv') %>%
+  read_csv('processedStationData/RegionalResultsRiverine_SWRO_updated.csv') %>%
   
   
   # fix periods in column names from excel
@@ -337,7 +336,7 @@ datatable(stationTableResultsWithComments, extensions = 'Buttons', escape=F, row
 
 Save results.
 ```{r saveResults}
-regionCode <- 'BRRO'#'SWRO'#'TRO'#'PRO'
+regionCode <- 'SWRO'#'TRO'#'PRO'#'BRRO'#'SWRO'#'TRO'#
 write.csv(stationTableResultsWithComments, paste("stationTableResults", regionCode,Sys.Date(),".csv",sep=''), row.names = FALSE, na="")
 ```
 
@@ -348,13 +347,16 @@ Optional section:
 Compare previous results to results just run with compareDF to highlight results differences
 
 ```{r}
-oldBRROresults <- read.csv('stationTableResultsBRRO2019-05-21.csv',na.strings=c("NA","NaN", " ")) %>%
+#oldresults <- read.csv('stationTableResultsBRRO2019-05-21.csv',na.strings=c("NA","NaN", " ")) %>%
+#oldresults <- read.csv('stationTableResultsPRO2019-09-30.csv',na.strings=c("NA","NaN", " ")) %>%
+#oldresults <- read.csv('stationTableResultsTRO2019-05-03.csv',na.strings=c("NA","NaN", " ")) %>%
+oldresults <- read.csv('stationTableResultsSWRO2019-05-03.csv',na.strings=c("NA","NaN", " ")) %>%
   select(STATION_ID, TEMP_VIO:SED_MET_STAT, BENTHIC_STAT:NUT_CHLA_STAT)
 library(compareDF)
 
 
 comparisonTable <- compare_df(select(stationTableResultsWithComments,STATION_ID, TEMP_VIO:SED_MET_STAT, BENTHIC_STAT:NUT_CHLA_STAT),
-                              oldBRROresults, 'STATION_ID')
+                              oldresults, 'STATION_ID')
 
 print(comparisonTable$html_output) #easier output to read
 
